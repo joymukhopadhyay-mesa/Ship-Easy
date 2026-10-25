@@ -242,3 +242,36 @@ The build prompt is cut off inside this phase ("…invoice draft with"). I built
 **Gate 4 evidence:** `npx vitest run` → **5 files, 135 tests passed, 0 skipped**; `npx tsc --noEmit` clean; `npm run build` → `✓ Compiled successfully`, `/` static.
 
 **Gate 4:** PASS (the gate text itself was cut off; I used the PDF's: "the whole app works end to end with zero model calls, including Demo 1 and Demo 2 with a visible change log").
+
+**Commit:** `1e8aeaa phase 4: …`, pushed.
+
+---
+
+## Phase 5 — Gemini layer (via OpenRouter, Google models only)
+
+**Docs read before writing code (25-10-2026):** OpenRouter structured outputs (`response_format: {type: "json_schema", json_schema: {name, strict: true, schema}}`; support is per endpoint, so pair it with `provider.require_parameters: true`), provider routing (`only`, `allow_fallbacks`, `require_parameters`), and reasoning tokens (`reasoning.effort`).
+
+**Model verification:** `GET /api/v1/models` → 41 `google/*` models. `google/gemini-3.7-flash` (default), `google/gemini-3.8-flash` and `google/gemini-3.5-flash-lite` (fallback) all exist and list `response_format, structured_outputs`. No swap was needed. gemini-3.7-flash reasoning is mandatory with supported efforts `high/medium/low`, so the app sends `reasoning: {effort: "low"}`.
+- First test call (`max_tokens: 80`) returned `content: null` because all 77 completion tokens went to reasoning. The retry with `effort: "minimal"`, `max_tokens: 400` gave: **model `google/gemini-3.7-flash`, provider Google, reply "I am Gemini, a large language model built by Google."**, usage 11 prompt / 176 completion (164 reasoning) tokens, upstream cost $0.0013365 (`is_byok: true`, so the OpenRouter-billed cost shows 0).
+
+**Built**
+- `lib/server/openrouter.ts`: fetch-based client (no new dependency). Every request carries `provider: {only: ["google-vertex","google-ai-studio"], allow_fallbacks: false, require_parameters: true}`, a strict JSON schema, `temperature: 0` and a 12 s total budget. 429/5xx → up to 3 tries with backoff (300/600/1200 ms). 402 → stop. 404, other 4xx or output failing Zod → try the fallback Google model. Anything else → a typed failure reason, never an exception.
+- `lib/server/guard.ts`: 32 KB body cap, 1,000-character message cap (Zod), per-IP in-memory rate limit of 40 requests/minute, friendly JSON errors only.
+- `lib/modelContract.ts`: strict schemas (every property required, no extras; `field` enums equal the allow-lists), system prompts, and pure converters. Model output → PATCH, which still goes through `sanitisePatch` (allow-list + source check) on the client. Hazard results become hints that can only ever **add** "implied".
+- Routes: `POST /api/chat` (PATCH only; receives the message plus asked slots and item names, never the booking numbers), `POST /api/hazard` (only descriptions the local list didn't already flag), `POST /api/explain` (**one** batched call per upload, or per newly completed chat booking; sends item descriptions + computed findings + the carrier reason).
+- Client: AI mode is the default. Any failure (missing key, 429, timeout, 5xx, bad output, network) → **automatic Local-only switch with a visible banner**, and that turn is finished by the local extractor. "Show what was sent" lists every request payload, the model and the outcome/cost. The AI narrative is shown next to the templated confirmation and labelled as stale after later edits.
+- C-4 Spec conflict: the privacy statement says only item descriptions and findings go to the model. That's true for files. In chat the seller's message text is necessarily sent, and the Privacy panel says so explicitly. Local-only sends nothing.
+
+**Verification (real model, dev server)**
+- `/api/chat` Demo 2 sentence → full patch with exact sources (`"1,260 kg"`, `"02-11-2026"` → `2026-11-02`, item fields), 5.1 s, $0.0032. "add another pallet" → `{pallets: "+1", source: "add another pallet"}` only. "next Tuesday … DC in Rotterdam" → `2026-10-27`, Warehouse (source "DC"), Rotterdam.
+- `/api/hazard`: mug none, rechargeable desk fan **implied**, smart watch **implied**, tote none.
+- `/api/explain`: 2 narratives that use only the given numbers.
+- `scripts/live-model-check.mjs` (the PDF's real-model tests): **4/4 PASS**. Non-divisible (quantity 1000, 12 per carton, no cartons invented), choice "(b)", seller override → only `chosenCarrier: C`, "make it 4 pallets, same weight" → only `pallets: 4`.
+- Browser, AI mode: Demo 2 + "add another pallet" → same change log as Local-only; narrative shown; no banner.
+- **Key removed** (second server with `OPENROUTER_API_KEY=` empty): routes return `missing_key` JSON. In the browser, the banner "The AI service isn't configured, so PreFlight switched to Local-only mode. Everything still works." appears and the toggle flips on. Demo 1 + add pallet still produces the exact Demo 1 log. "Show what was sent" lists the failed call. No stack trace anywhere on the page.
+- `tests/model.test.ts` (7, fetch mocked, no network): missing key makes no call; 429 → retried, then rate_limited; 402 stops; 404 → fallback model, with the request provider-pinned and Google-only; invalid output → bad_output; a hallucinated value or forbidden field from the model is dropped; hazard hints only add.
+- **Secret scan:** a fragment of the real key appears in 0 tracked files, 0 commits, 0 files in `.next/static`, 0 in `public/`. The key lives only in `.env.local` (ignored).
+
+**Gate 5 evidence:** `npx vitest run` → **6 files, 142 tests passed, 0 skipped**; `npx tsc --noEmit` clean; `npm run build` ✓ (routes `/api/chat`, `/api/explain`, `/api/hazard` dynamic). The PDF's "done when" items hold: removing the key degrades gracefully, and no chat test lets the model change a field the seller didn't mention.
+
+**Gate 5:** PASS.

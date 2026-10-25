@@ -5,7 +5,7 @@ Read `docs/SPEC.pdf` (the spec) and `docs/template.xlsx` from the repo, never fr
 
 ## Design principle: deterministic truth, AI voice
 - Every number, rule result, repair and carrier ranking comes from pure, tested TypeScript in `/lib`.
-- The model (Google Gemini via OpenRouter, server routes only) may ONLY:
+- The model (Google Gemini via OpenRouter — google/* models only, provider pinned to google-vertex/google-ai-studio; server routes only; key in OPENROUTER_API_KEY) may ONLY:
   (a) extract seller-supplied fields from chat as a PATCH, (b) classify implied hazardous goods for R-06,
   (c) write explanations. It never returns or sees the whole booking.
 - The app must work fully with no model (Local-only mode, also the automatic fallback on 429 / timeout / missing key).

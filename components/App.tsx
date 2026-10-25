@@ -4,13 +4,15 @@ import { chatEdit, chatTurn, extractContext, newChat, type ChatState } from "@/l
 import { DEFAULT_WEIGHTS } from "@/lib/config";
 import { londonStamp, prettyDate } from "@/lib/dates";
 import { correctedWorkbook } from "@/lib/exportXlsx";
-import { uploadNarrative } from "@/lib/explain";
+import { carrierReason, fixText, uploadNarrative } from "@/lib/explain";
+import { classifyHazard } from "@/lib/hazards";
 import { extractLocal } from "@/lib/localExtract";
 import { parseWorkbook, type OrphanRow } from "@/lib/parse";
-import { emptyPatch, type Patch } from "@/lib/patch";
+import { emptyPatch, PatchSchema, type Patch } from "@/lib/patch";
+import type { ExplainInput } from "@/lib/modelContract";
 import { reportHtml } from "@/lib/report";
 import { applyEdits, newSession, type Edit, type Session } from "@/lib/session";
-import type { Env, Weights } from "@/lib/types";
+import type { BookingResult, Env, HazardKind, Item, Weights } from "@/lib/types";
 import { reconcile, validateBooking, type Reconciliation } from "@/lib/validate";
 import { BookingCard } from "./BookingCard";
 import { AssumptionsPanel, PrivacyPanel, type SentRecord } from "./Panels";
@@ -40,8 +42,13 @@ const download = (data: BlobPart, name: string, type: string) => {
 export default function App({ today }: { today: string }) {
   const [tab, setTab] = useState<"chat" | "upload">("chat");
   const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
-  const env: Env = useMemo(() => ({ today, weights }), [today, weights]);
-  const [localOnly, setLocalOnly] = useState(true);
+  const [hazardHints, setHazardHints] = useState<Record<string, HazardKind>>({});
+  const env: Env = useMemo(() => ({ today, weights, hazardHints }), [today, weights, hazardHints]);
+  const [localOnly, setLocalOnlyState] = useState(false);
+  const localOnlyRef = useRef(false);
+  const setLocalOnly = (v: boolean) => { localOnlyRef.current = v; setLocalOnlyState(v); };
+  const [narratives, setNarratives] = useState<Record<string, { text: string; logLen: number }>>({});
+  const hazardChecked = useRef(new Set<string>());
   const [banner, setBanner] = useState<string | null>(null);
   const [sent, setSent] = useState<SentRecord[]>([]);
   const [showAssumptions, setShowAssumptions] = useState(false);
@@ -77,11 +84,80 @@ export default function App({ today }: { today: string }) {
 
   const stamp = () => londonStamp(new Date());
 
+  // ---- model calls (server routes hold the key). Any failure -> Local-only + banner, never an error.
+  const FALLBACK_TEXT = "The AI service is unavailable, so PreFlight switched to Local-only mode. Everything still works.";
+  const fallBack = (message: string) => {
+    setLocalOnly(true);
+    setBanner(message);
+  };
+  const postModel = async <T,>(route: "chat" | "hazard" | "explain", body: unknown): Promise<(T & { ok: true; model?: string; costUsd?: number | null }) | null> => {
+    const at = stamp();
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    try {
+      const res = await fetch(`/api/${route}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal });
+      const j = await res.json().catch(() => null);
+      setSent((x) => [...x, { at, route, model: j?.model ?? null, payload: JSON.stringify(body, null, 2), outcome: j?.ok ? `ok${typeof j.costUsd === "number" ? ` · ${j.costUsd.toFixed(5)}` : ""}` : `fell back to Local-only (${j?.reason ?? "error"})` }]);
+      if (!j?.ok) { fallBack(typeof j?.message === "string" ? j.message : FALLBACK_TEXT); return null; }
+      return j;
+    } catch {
+      setSent((x) => [...x, { at, route, model: null, payload: JSON.stringify(body, null, 2), outcome: "fell back to Local-only (timeout or network)" }]);
+      fallBack(FALLBACK_TEXT);
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
   const getPatch = useCallback(async (message: string, st: ChatState): Promise<Patch> => {
     const ctx = extractContext(st, today);
-    if (localOnly) return extractLocal(message, ctx);
+    if (localOnlyRef.current) return extractLocal(message, ctx);
+    const j = await postModel<{ patch: unknown }>("chat", { message, today, context: ctx });
+    const p = j ? PatchSchema.safeParse(j.patch) : null;
+    if (p?.success) return p.data;
+    if (j) fallBack(FALLBACK_TEXT);
     return extractLocal(message, ctx);
-  }, [localOnly, today]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [today]);
+
+  /** R-06: only descriptions the local list does NOT already flag are sent; hints can only ADD "implied". */
+  const checkHazards = async (items: Item[]) => {
+    if (localOnlyRef.current) return;
+    const uniq = [...new Set(items.filter((i) => i.description && classifyHazard(i.description).kind === "none" && !hazardChecked.current.has(i.description)).map((i) => i.description))];
+    if (!uniq.length) return;
+    uniq.forEach((d) => hazardChecked.current.add(d));
+    const j = await postModel<{ results: { index: number; kind: string }[] }>("hazard", { descriptions: uniq });
+    if (!j) return;
+    const flagged = new Set(j.results.filter((r) => r.kind !== "none").map((r) => uniq[r.index]).filter(Boolean));
+    if (!flagged.size) return;
+    const hints: Record<string, HazardKind> = {};
+    for (const it of items) if (flagged.has(it.description)) hints[it.rowId] = "implied";
+    setHazardHints((h) => ({ ...h, ...hints }));
+  };
+
+  const explainInput = (r: BookingResult): ExplainInput => ({
+    ref: r.booking.bookingId,
+    verdict: r.verdict,
+    items: r.booking.items.map((i) => i.description).filter(Boolean).slice(0, 30),
+    findings: r.rules.filter((x) => x.status === "fail").map((x) => {
+      const reps = r.repairs.filter((p) => p.rules.includes(x.id));
+      const fix = reps.length ? reps.map((p) => `${p.message} (confidence ${p.confidence})`).join(" ") : fixText(x, r);
+      return { rule: x.id, severity: x.severity, problem: x.message.slice(0, 400), fix: fix.slice(0, 500) };
+    }).slice(0, 12),
+    carrier: carrierReason(r.carrier).reason.slice(0, 400),
+  });
+  /** ONE batched call per upload (or per completed chat booking). */
+  const explain = async (results: BookingResult[], logLens: number[]) => {
+    if (localOnlyRef.current || !results.length) return;
+    const j = await postModel<{ narratives: { ref: string; text: string }[] }>("explain", { bookings: results.slice(0, 60).map(explainInput) });
+    if (!j) return;
+    const map: Record<string, { text: string; logLen: number }> = {};
+    for (const n of j.narratives) {
+      const k = results.findIndex((r) => r.booking.bookingId === n.ref);
+      if (k >= 0) map[n.ref] = { text: n.text, logLen: logLens[k] };
+    }
+    setNarratives((x) => ({ ...x, ...map }));
+  };
 
   const send = async (text: string, base?: ChatState) => {
     const message = text.trim();
@@ -95,6 +171,8 @@ export default function App({ today }: { today: string }) {
       const t = chatTurn(st, patch ?? emptyPatch(), message, env, stamp());
       setChat(t.state);
       setMsgs((m) => [...m, { role: "bot", text: t.reply, at: stamp() }]);
+      void checkHazards(t.state.session.booking.items);
+      if (t.state.baselined && !st.baselined) void explain([t.state.session.result], [t.state.session.log.length]);
     } catch {
       setMsgs((m) => [...m, { role: "bot", text: "Sorry, I couldn't process that. Please try rephrasing.", at: stamp() }]);
     } finally {
@@ -120,6 +198,7 @@ export default function App({ today }: { today: string }) {
       setNotes(parsed.notes);
       setSelected(0);
       setFileName(name);
+      void checkHazards(parsed.bookings.flatMap((b) => b.items)).then(() => explain(ss.map((x) => x.result), ss.map(() => 0)));
     } catch {
       setUploadError("That file couldn't be read. Please upload the Bookings and Items sheets as an .xlsx file.");
     }
@@ -158,6 +237,7 @@ export default function App({ today }: { today: string }) {
         onWeights={setWeights}
         onEdits={onEdits}
         showAddPallet
+        narrative={narratives[s.booking.bookingId] ? narratives[s.booking.bookingId].text + (narratives[s.booking.bookingId].logLen !== s.log.length ? " (Written before your latest edits; the findings above are current.)" : "") : null}
         onConfirmHazard={(rowId) => onEdits([{ path: "item.hazardConfirmedAt", rowId, value: stamp() }], "declaration")}
         onDownloadXlsx={() => download(correctedWorkbook(allResults), mode === "chat" ? "preflight-booking.xlsx" : `corrected-${fileName ?? "bookings.xlsx"}`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
         onDownloadReport={() => download(reportHtml({ title: "PreFlight pre-flight report", today, results: allResults, logs: allLogs, reconciliation: mode === "upload" ? recon?.line : undefined, orphans: mode === "upload" ? orphans : undefined }), "preflight-report.html", "text/html")}
