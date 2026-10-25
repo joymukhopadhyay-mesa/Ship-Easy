@@ -275,3 +275,13 @@ The build prompt is cut off inside this phase ("…invoice draft with"). I built
 **Gate 5 evidence:** `npx vitest run` → **6 files, 142 tests passed, 0 skipped**; `npx tsc --noEmit` clean; `npm run build` ✓ (routes `/api/chat`, `/api/explain`, `/api/hazard` dynamic). The PDF's "done when" items hold: removing the key degrades gracefully, and no chat test lets the model change a field the seller didn't mention.
 
 **Gate 5:** PASS.
+
+**Commit:** `720215a phase 5: …`, pushed.
+
+---
+
+## Phase 6 — Deploy preparation (not deployed)
+
+- `README.md`: what it is, the design principle, run/test/oracle/live-check commands, Vercel deploy steps (env vars server-side only, private-window + phone check, no redeploys after the Wednesday re-test), a map of where things are, and the note that the Stage 1 deadline isn't in the case files. The link must stay live until Wed 28 Oct 2026 EOD IST.
+- Production smoke test (`next build` + `next start -p 3102`): `GET /` 200 in 3 ms (static, no cold-start screen); `/sample-bookings.xlsx` 200 (50,225 B); `POST /api/chat` returns a real patch; `GET /api/chat` 405 with no stack trace.
+- **Not done (needs the owner):** creating the Vercel project, putting the key into Vercel env vars, and deploying. These are outward-facing actions that put the secret on a third-party service, so I'm asking before doing them.
