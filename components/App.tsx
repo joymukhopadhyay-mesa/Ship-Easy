@@ -85,7 +85,7 @@ export default function App({ today }: { today: string }) {
   const stamp = () => londonStamp(new Date());
 
   // ---- model calls (server routes hold the key). Any failure -> Local-only + banner, never an error.
-  const FALLBACK_TEXT = "The AI service is unavailable, so PreFlight switched to Local-only mode. Everything still works.";
+  const FALLBACK_TEXT = "The AI service is unavailable, so Ship Easy switched to Local-only mode. Everything still works.";
   const fallBack = (message: string) => {
     setLocalOnly(true);
     setBanner(message);
@@ -239,8 +239,8 @@ export default function App({ today }: { today: string }) {
         showAddPallet
         narrative={narratives[s.booking.bookingId] ? narratives[s.booking.bookingId].text + (narratives[s.booking.bookingId].logLen !== s.log.length ? " (Written before your latest edits; the findings above are current.)" : "") : null}
         onConfirmHazard={(rowId) => onEdits([{ path: "item.hazardConfirmedAt", rowId, value: stamp() }], "declaration")}
-        onDownloadXlsx={() => download(correctedWorkbook(allResults), mode === "chat" ? "preflight-booking.xlsx" : `corrected-${fileName ?? "bookings.xlsx"}`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
-        onDownloadReport={() => download(reportHtml({ title: "PreFlight pre-flight report", today, results: allResults, logs: allLogs, reconciliation: mode === "upload" ? recon?.line : undefined, orphans: mode === "upload" ? orphans : undefined }), "preflight-report.html", "text/html")}
+        onDownloadXlsx={() => download(correctedWorkbook(allResults), mode === "chat" ? "ship-easy-booking.xlsx" : `corrected-${fileName ?? "bookings.xlsx"}`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+        onDownloadReport={() => download(reportHtml({ title: "Ship Easy pre-flight report", today, results: allResults, logs: allLogs, reconciliation: mode === "upload" ? recon?.line : undefined, orphans: mode === "upload" ? orphans : undefined }), "ship-easy-report.html", "text/html")}
       />
     );
   };
@@ -251,7 +251,7 @@ export default function App({ today }: { today: string }) {
       <header className="flex flex-wrap items-center justify-between gap-3 rounded-card bg-white px-4 py-3 shadow-card">
         <div className="flex items-center gap-2">
           <span className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-white"><TruckIcon className="h-5 w-5" /></span>
-          <div><p className="text-sm font-semibold leading-tight">PreFlight</p><p className="text-[10px] text-muted">Shipment booking & pre-flight checker</p></div>
+          <div><p className="text-sm font-semibold leading-tight">Ship Easy</p><p className="text-[10px] text-muted">Shipment booking & pre-flight checker</p></div>
         </div>
         <nav className="flex rounded-full bg-[#F4F5F7] p-1">
           <Pill testId="tab-chat" active={tab === "chat"} onClick={() => setTab("chat")}>Chat booking</Pill>

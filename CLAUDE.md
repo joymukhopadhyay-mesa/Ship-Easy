@@ -1,4 +1,4 @@
-# PreFlight (Ship-Easy) — standing rules
+# Ship Easy — standing rules
 
 Read `docs/SPEC.pdf` (the spec) and `docs/template.xlsx` from the repo, never from chat attachments.
 `BUILD_LOG.md` records every phase, gate result, assumption and spec conflict.

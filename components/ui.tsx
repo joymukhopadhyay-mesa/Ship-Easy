@@ -114,7 +114,7 @@ export function TruckArt() {
       <rect x="8" y="78" width="194" height="8" rx="3" fill="#0B0B0C" />
       <circle cx="44" cy="90" r="11" fill="#0B0B0C" /><circle cx="44" cy="90" r="4" fill="#9CA3AF" />
       <circle cx="170" cy="90" r="11" fill="#0B0B0C" /><circle cx="170" cy="90" r="4" fill="#9CA3AF" />
-      <text x="20" y="58" fontSize="16" fontWeight="700" fill="#0B0B0C" fontFamily="Inter, sans-serif">PreFlight</text>
+      <text x="20" y="58" fontSize="16" fontWeight="700" fill="#0B0B0C" fontFamily="Inter, sans-serif">Ship Easy</text>
     </svg>
   );
 }

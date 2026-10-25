@@ -1,4 +1,4 @@
-# PreFlight (Ship-Easy)
+# Ship Easy
 
 Conversational shipment booking + pre-flight error checker for UK → Germany / France / Netherlands.
 A seller describes a shipment in plain language, or uploads the Bookings and Items sheets, and gets one **Booking Card** per booking:

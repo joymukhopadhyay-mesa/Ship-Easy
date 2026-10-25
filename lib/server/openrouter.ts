@@ -40,7 +40,7 @@ export async function callModel<T>(opts: {
         const res = await fetch(ENDPOINT, {
           method: "POST",
           signal: ctrl.signal,
-          headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "X-Title": "PreFlight" },
+          headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "X-Title": "Ship Easy" },
           body: JSON.stringify({
             model,
             messages: [{ role: "system", content: opts.system }, { role: "user", content: opts.user }],
@@ -79,10 +79,10 @@ export async function callModel<T>(opts: {
 }
 
 export const FAILURE_TEXT: Record<ModelFailure, string> = {
-  missing_key: "The AI service isn't configured, so PreFlight switched to Local-only mode. Everything still works.",
-  rate_limited: "The AI service is busy (rate limited), so PreFlight switched to Local-only mode. Everything still works.",
-  timeout: "The AI service didn't answer in time, so PreFlight switched to Local-only mode. Everything still works.",
-  out_of_credits: "The AI service is unavailable, so PreFlight switched to Local-only mode. Everything still works.",
-  upstream: "The AI service had a problem, so PreFlight switched to Local-only mode. Everything still works.",
-  bad_output: "The AI reply couldn't be used, so PreFlight switched to Local-only mode. Everything still works.",
+  missing_key: "The AI service isn't configured, so Ship Easy switched to Local-only mode. Everything still works.",
+  rate_limited: "The AI service is busy (rate limited), so Ship Easy switched to Local-only mode. Everything still works.",
+  timeout: "The AI service didn't answer in time, so Ship Easy switched to Local-only mode. Everything still works.",
+  out_of_credits: "The AI service is unavailable, so Ship Easy switched to Local-only mode. Everything still works.",
+  upstream: "The AI service had a problem, so Ship Easy switched to Local-only mode. Everything still works.",
+  bad_output: "The AI reply couldn't be used, so Ship Easy switched to Local-only mode. Everything still works.",
 };

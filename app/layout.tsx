@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "PreFlight — shipment booking & pre-flight checker",
+  title: "Ship Easy — shipment booking & pre-flight checker",
   description: "Book UK to Germany, France and Netherlands shipments and catch mistakes before they leave.",
 };
 

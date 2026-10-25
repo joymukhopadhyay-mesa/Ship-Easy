@@ -285,3 +285,9 @@ The build prompt is cut off inside this phase ("…invoice draft with"). I built
 - `README.md`: what it is, the design principle, run/test/oracle/live-check commands, Vercel deploy steps (env vars server-side only, private-window + phone check, no redeploys after the Wednesday re-test), a map of where things are, and the note that the Stage 1 deadline isn't in the case files. The link must stay live until Wed 28 Oct 2026 EOD IST.
 - Production smoke test (`next build` + `next start -p 3102`): `GET /` 200 in 3 ms (static, no cold-start screen); `/sample-bookings.xlsx` 200 (50,225 B); `POST /api/chat` returns a real patch; `GET /api/chat` 405 with no stack trace.
 - **Not done (needs the owner):** creating the Vercel project, putting the key into Vercel env vars, and deploying. These are outward-facing actions that put the secret on a third-party service, so I'm asking before doing them.
+
+---
+
+## Rename (26-10-2026)
+
+- The app is now called **Ship Easy** everywhere users see it: header, page title, truck illustration, AI fallback banners, report title and download file names (`ship-easy-booking.xlsx`, `ship-easy-report.html`), plus README/CLAUDE.md/package.json. "Pre-flight check" stays as the name of the feature. Tests 142/142, build OK.
