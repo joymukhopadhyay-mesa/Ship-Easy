@@ -287,7 +287,7 @@ export function chatTurn(st0: ChatState, rawPatch: Patch, message: string, env: 
     const cur = st0.session.booking;
     return {
       state: st0,
-      reply: `You already have a booking for ${cur.items.map((i) => i.description).join(", ")} to ${cur.destinationCity ?? "your destination"}. To book this as a separate shipment, press "Start over" (download this one first if you need it). To add these goods to the current booking instead, say "add ${message.replace(/^\s*(?:(?:i|we)\S*\s+)?(?:need to |want to )?(?:ship|send|sending|shipping|export|book)\s+/i, "").replace(/s+(?:to|for|into)s+.*$/i, "").slice(0, 60)}".`,
+      reply: `You already have a booking for ${cur.items.map((i) => i.description).join(", ")} to ${cur.destinationCity ?? "your destination"}. To book this as a separate shipment, press "Start over" (download this one first if you need it). To add these goods to the current booking instead, say "add ${message.replace(/^\s*(?:(?:i|we)\S*\s+)?(?:need to |want to )?(?:ship|send|sending|shipping|export|book)\s+/i, "").replace(/\s+(?:to|for|into)\s+.*$/i, "").slice(0, 60)}".`,
       rejected,
       applied: emptyPatch(),
     };
