@@ -1,0 +1,27 @@
+{
+  "name": "Non-divisible quantity (1,000 units at 12 per carton)",
+  "today": "2026-10-25",
+  "turns": [
+    {
+      "user": "I'm sending 1,000 ceramic mugs from London to a warehouse in Berlin, 12 per carton, £5 each",
+      "expect": {
+        "itemCartonsComputed": false,
+        "nonDivisible": {
+          "quantity": 1000,
+          "unitsPerCarton": 12,
+          "remainder": 4,
+          "options": [
+            { "key": "a", "lines": [{ "quantity": 996, "cartons": 83, "unitsPerCarton": 12 }] },
+            { "key": "b", "lines": [{ "quantity": 1008, "cartons": 84, "unitsPerCarton": 12 }] },
+            { "key": "c", "lines": [{ "quantity": 996, "cartons": 83, "unitsPerCarton": 12 }, { "quantity": 4, "cartons": 1, "unitsPerCarton": 4 }] }
+          ]
+        },
+        "invariant": "every option passes R-03"
+      }
+    },
+    {
+      "user": "b",
+      "expect": { "items": [{ "quantity": 1008, "cartons": 84, "unitsPerCarton": 12 }], "rules": { "R-03": "pass" } }
+    }
+  ]
+}

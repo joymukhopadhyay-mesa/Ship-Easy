@@ -1,0 +1,24 @@
+{
+  "name": "Fields the seller did not mention stay untouched after a patch",
+  "today": "2026-10-25",
+  "turns": [
+    {
+      "user": "Ship 1,200 wooden chopping boards from Leeds to a warehouse in Frankfurt, ready 02-11-2026. £9 each, 10 per carton, 0.95 kg each, HS 441990, made in Vietnam. Total weight 1,260 kg on 3 pallets. Fastest please, appointment is booked.",
+      "expect": {
+        "complete": true,
+        "booking": { "originCity": "Leeds", "destinationCity": "Frankfurt", "destinationCountry": "Germany", "destinationType": "Warehouse", "readyDate": "2026-11-02", "priority": "Fastest", "pallets": 3, "cartons": 120, "declaredValue": 10800, "grossWeight": 1260, "appointmentBooked": true },
+        "chosen": "B"
+      }
+    },
+    {
+      "user": "add another pallet",
+      "expect": {
+        "patchFields": ["pallets"],
+        "booking": { "pallets": 4 },
+        "unchangedExcept": ["pallets"],
+        "changeLog": ["Pallets 3 -> 4", "Weight/pallet 420 -> 315 kg", "No checks changed", "Carrier B (3d, GBP 660) -> C (2d, GBP 1,360) +GBP 700, 1 day faster"],
+        "chosen": "C"
+      }
+    }
+  ]
+}

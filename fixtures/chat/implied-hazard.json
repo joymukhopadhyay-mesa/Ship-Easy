@@ -1,0 +1,15 @@
+{
+  "name": "Implied hazard (wireless earbuds)",
+  "today": "2026-10-25",
+  "turns": [
+    {
+      "user": "Shipping 200 wireless earbuds to a shop in Paris, £20 each, 25 per carton",
+      "expect": {
+        "inferred": { "destinationCountry": "France", "destinationType": "Business address", "currency": "GBP", "originCountry": "United Kingdom" },
+        "rules": { "R-06": "fail" },
+        "hazard": { "kind": "implied", "label": "Blocked pending seller confirmation", "severity": "Red" },
+        "neverAmber": true
+      }
+    }
+  ]
+}

@@ -97,3 +97,39 @@ Browser (Next.js 14 App Router + TypeScript + Tailwind)
 - The oracle script runs on Node 26's native TypeScript type stripping (`node --experimental-strip-types`), so no `tsx` dependency is needed.
 
 **Gate 0:** PASS. `npm run build` → `✓ Compiled successfully` (routes `/`, `/_not-found`). `npm test` → `Test Files 1 passed, Tests 1 passed`. `git status --ignored` → `!! .env.local` (untracked and ignored), `.env.example` tracked.
+
+**Commit:** `5725dc4 phase 0: scaffold …`, pushed.
+
+---
+
+## Phase 1 — Fixtures and oracle
+
+**What I did**
+
+- `scripts/make-fixtures.mjs` loads `docs/template.xlsx` and fills Bookings/Items from row 4. The title row, header row 2, grey example row 3 and Sheets 3–7 are left untouched, so every fixture is in the official structure. It wrote 22 workbooks: `f01`–`f10` (one rule each, `f06` explicit hazard), `f06i` (implied hazard, extra case), `f11`–`f13` (two planted mistakes), `f14` zero items, `f15` orphan item, `f16` zero pallets, `f17` clean, `f18` Demo 1, `f19` Demo 2, `f20` seller override, `f21` weekend.
+- `fixtures/expected.json` is hand-reasoned from the rules (not engine output). Every valid date is after 25-10-2026, and the R-10 fixture uses 20-10-2026.
+- `fixtures/chat/`: `non-divisible.json`, `implied-hazard.json`, `untouched-field.json`.
+- `scripts/oracle.mts` imports nothing from `/lib` or `/data`. It reads each workbook with SheetJS, takes the rate card from the workbook's own Sheet 3, and recomputes rules, verdict, kg/pallet, feasibility, ranking (including Balanced), cost, dates, min pallets, override fixes and reconciliation. It also checks that every expected repair actually clears the identities it targets and that "from" values match the file.
+
+**Fixture design notes (reasoning recorded so the oracle and engine can't drift)**
+
+- f01 uses coffee `90121` (5 digits, the classic lost leading zero of `090121`) → R-01 Red + caveat. No value is suggested, because a guessed HS code is not a safe repair.
+- f03 (R-03 only) can only be produced when two mutually consistent numbers are wrong, so no single field clears it. Stage 2 finds **two** valid pairs (DV+quantity, or booking cartons+item cartons) → **Ambiguous**, apply neither.
+- f11: DV 5600 and quantity 1000 both wrong → the only clearing pair is DV 5400 + quantity 1080 → **High**.
+- f12: two item-level mistakes (MUG quantity, BWL cartons). One booking-level plus one item-level field can't clear both R-03 failures → **Stage 3**, Possible, apply disabled.
+- f13: booking cartons wrong and gross weight under the goods weight. These share no mutable field, so they're repaired separately (A-3): R-04 High, R-07 floor Possible.
+- Demo bookings use ready **Mon 02-11-2026** so that B (3d) → Thu 5 Nov and C (2d) → Wed 4 Nov. A Thursday ready date would roll both ETAs to the same Monday and make "1 day faster" look false on screen.
+- f20 uses priority Fastest so that the recommendation among the feasible {A (cap 500 inclusive), B} is B. That matches the spec's "switch to B" example. The override column is the optional `Chosen carrier` (A-5).
+
+**Gate 1 evidence**
+
+```
+$ npm run oracle
+oracle: 22 fixtures, 22 bookings checked
+oracle: expected.json agrees on every fixture
+```
+- Mutation test: I changed Demo 1's 3-pallet cost to 661 and the weekend ETA to 14 Nov in a copy → the oracle reported both disagreements → restored the file.
+- Fixtures 01–10 and 06i: the oracle asserts each fails exactly its own rule (in both `rules` and `breaks`) → pass.
+- Demo 1 (800 kg → none; 533 → B £660; 400 → A, B, C), Demo 2 (420 → A, B → B £660; 315 → C £1,360), weekend (Sat 7 Nov → Mon 9 Nov → A Mon 16 Nov), Thursday (5 Nov → A Tue 10 Nov) and Balanced (A 0.60 / B 0.35 / C 0.40 → B) all match the prompt.
+
+**Gate 1:** PASS.

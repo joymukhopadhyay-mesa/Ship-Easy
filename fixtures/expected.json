@@ -1,0 +1,1273 @@
+{
+  "_note": "Hand-written expected outputs (see BUILD_LOG Phase 1). today = 2026-10-25 (Europe/London). Never edit to match engine output.",
+  "today": "2026-10-25",
+  "extraChecks": {
+    "bk001ThursdayEtaA": {
+      "ready": "2026-11-05",
+      "collection": "2026-11-05",
+      "etaA": "2026-11-10"
+    },
+    "balancedWorkedCheck": {
+      "pallets": 3,
+      "lane": "Germany",
+      "costs": {
+        "A": 540,
+        "B": 660,
+        "C": 1020
+      },
+      "scores": {
+        "A": 0.6,
+        "B": 0.35,
+        "C": 0.4
+      },
+      "pick": "B"
+    }
+  },
+  "fixtures": [
+    {
+      "id": "01",
+      "file": "f01-r01-hs-code.xlsx",
+      "breaks": [
+        "R-01"
+      ],
+      "reconciliation": "2 rows read, 2 validated, 0 unmatched, 0 incomplete",
+      "unmatched": [],
+      "bookings": [
+        {
+          "gate": [],
+          "kgPerPallet": 300,
+          "r05": "pass",
+          "feasible": [
+            "A",
+            "B",
+            "C"
+          ],
+          "recommended": "A",
+          "chosen": "A",
+          "totalCost": 180,
+          "dates": {
+            "ready": "2026-11-05",
+            "collection": "2026-11-05",
+            "eta": "2026-11-10"
+          },
+          "bookingId": "F01",
+          "verdict": "BLOCKED",
+          "rules": {
+            "R-01": "fail",
+            "R-02": "pass",
+            "R-03": "pass",
+            "R-04": "pass",
+            "R-05": "pass",
+            "R-06": "pass",
+            "R-07": "pass",
+            "R-08": "pass",
+            "R-09": "pass",
+            "R-10": "pass"
+          },
+          "hsCaveat": "lost-leading-zero",
+          "repairs": [
+            {
+              "rules": [
+                "R-01"
+              ],
+              "stage": null,
+              "confidence": "Possible",
+              "changes": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "02",
+      "file": "f02-r02-declared-value.xlsx",
+      "breaks": [
+        "R-02"
+      ],
+      "reconciliation": "2 rows read, 2 validated, 0 unmatched, 0 incomplete",
+      "unmatched": [],
+      "bookings": [
+        {
+          "gate": [],
+          "kgPerPallet": 206.67,
+          "r05": "pass",
+          "feasible": [
+            "A",
+            "B",
+            "C"
+          ],
+          "recommended": "A",
+          "chosen": "A",
+          "totalCost": 540,
+          "dates": {
+            "ready": "2026-11-05",
+            "collection": "2026-11-05",
+            "eta": "2026-11-10"
+          },
+          "bookingId": "F02",
+          "verdict": "BLOCKED",
+          "rules": {
+            "R-01": "pass",
+            "R-02": "fail",
+            "R-03": "pass",
+            "R-04": "pass",
+            "R-05": "pass",
+            "R-06": "pass",
+            "R-07": "pass",
+            "R-08": "pass",
+            "R-09": "pass",
+            "R-10": "pass"
+          },
+          "repairs": [
+            {
+              "rules": [
+                "R-02"
+              ],
+              "stage": 1,
+              "confidence": "High",
+              "changes": [
+                {
+                  "field": "booking.declared_value",
+                  "from": 5600,
+                  "to": 5400
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03",
+      "file": "f03-r03-carton-maths.xlsx",
+      "breaks": [
+        "R-03"
+      ],
+      "reconciliation": "2 rows read, 2 validated, 0 unmatched, 0 incomplete",
+      "unmatched": [],
+      "bookings": [
+        {
+          "gate": [],
+          "kgPerPallet": 40,
+          "r05": "pass",
+          "feasible": [
+            "A",
+            "B",
+            "C"
+          ],
+          "recommended": "A",
+          "chosen": "A",
+          "totalCost": 180,
+          "dates": {
+            "ready": "2026-11-05",
+            "collection": "2026-11-05",
+            "eta": "2026-11-10"
+          },
+          "bookingId": "F03",
+          "verdict": "BLOCKED",
+          "rules": {
+            "R-01": "pass",
+            "R-02": "pass",
+            "R-03": "fail",
+            "R-04": "pass",
+            "R-05": "pass",
+            "R-06": "pass",
+            "R-07": "pass",
+            "R-08": "pass",
+            "R-09": "pass",
+            "R-10": "pass"
+          },
+          "repairs": [
+            {
+              "rules": [
+                "R-03"
+              ],
+              "stage": 2,
+              "confidence": "Ambiguous",
+              "options": [
+                [
+                  {
+                    "field": "booking.declared_value",
+                    "from": 800,
+                    "to": 960
+                  },
+                  {
+                    "field": "item.quantity",
+                    "sku": "TOTE-01",
+                    "from": 100,
+                    "to": 120
+                  }
+                ],
+                [
+                  {
+                    "field": "booking.cartons",
+                    "from": 12,
+                    "to": 10
+                  },
+                  {
+                    "field": "item.cartons",
+                    "sku": "TOTE-01",
+                    "from": 12,
+                    "to": 10
+                  }
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "04",
+      "file": "f04-r04-booking-cartons.xlsx",
+      "breaks": [
+        "R-04"
+      ],
+      "reconciliation": "2 rows read, 2 validated, 0 unmatched, 0 incomplete",
+      "unmatched": [],
+      "bookings": [
+        {
+          "gate": [],
+          "kgPerPallet": 206.67,
+          "r05": "pass",
+          "feasible": [
+            "A",
+            "B",
+            "C"
+          ],
+          "recommended": "A",
+          "chosen": "A",
+          "totalCost": 540,
+          "dates": {
+            "ready": "2026-11-05",
+            "collection": "2026-11-05",
+            "eta": "2026-11-10"
+          },
+          "bookingId": "F04",
+          "verdict": "BLOCKED",
+          "rules": {
+            "R-01": "pass",
+            "R-02": "pass",
+            "R-03": "pass",
+            "R-04": "fail",
+            "R-05": "pass",
+            "R-06": "pass",
+            "R-07": "pass",
+            "R-08": "pass",
+            "R-09": "pass",
+            "R-10": "pass"
+          },
+          "repairs": [
+            {
+              "rules": [
+                "R-04"
+              ],
+              "stage": 1,
+              "confidence": "High",
+              "changes": [
+                {
+                  "field": "booking.cartons",
+                  "from": 95,
+                  "to": 90
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "05",
+      "file": "f05-r05-weight-per-pallet.xlsx",
+      "breaks": [
+        "R-05"
+      ],
+      "reconciliation": "2 rows read, 2 validated, 0 unmatched, 0 incomplete",
+      "unmatched": [],
+      "bookings": [
+        {
+          "gate": [],
+          "kgPerPallet": 800,
+          "r05": "no_carrier_fits",
+          "feasible": [],
+          "recommended": null,
+          "chosen": null,
+          "totalCost": null,
+          "dates": {
+            "ready": "2026-11-05",
+            "collection": "2026-11-05",
+            "eta": null
+          },
+          "bookingId": "F05",
+          "verdict": "BLOCKED",
+          "rules": {
+            "R-01": "pass",
+            "R-02": "pass",
+            "R-03": "pass",
+            "R-04": "pass",
+            "R-05": "fail",
+            "R-06": "pass",
+            "R-07": "pass",
+            "R-08": "pass",
+            "R-09": "pass",
+            "R-10": "pass"
+          },
+          "minPallets": {
+            "A": 5,
+            "B": 4,
+            "C": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "06",
+      "file": "f06-r06-explicit-hazard.xlsx",
+      "breaks": [
+        "R-06"
+      ],
+      "reconciliation": "2 rows read, 2 validated, 0 unmatched, 0 incomplete",
+      "unmatched": [],
+      "bookings": [
+        {
+          "gate": [],
+          "kgPerPallet": 80,
+          "r05": "pass",
+          "feasible": [
+            "A",
+            "B",
+            "C"
+          ],
+          "recommended": "A",
+          "chosen": "A",
+          "totalCost": 180,
+          "dates": {
+            "ready": "2026-11-05",
+            "collection": "2026-11-05",
+            "eta": "2026-11-10"
+          },
+          "bookingId": "F06",
+          "verdict": "BLOCKED",
+          "rules": {
+            "R-01": "pass",
+            "R-02": "pass",
+            "R-03": "pass",
+            "R-04": "pass",
+            "R-05": "pass",
+            "R-06": "fail",
+            "R-07": "pass",
+            "R-08": "pass",
+            "R-09": "pass",
+            "R-10": "pass"
+          },
+          "hazard": {
+            "sku": "PWR-10",
+            "kind": "explicit"
+          }
+        }
+      ]
+    },
+    {
+      "id": "06i",
+      "file": "f06i-r06-implied-hazard.xlsx",
+      "breaks": [
+        "R-06"
+      ],
+      "reconciliation": "2 rows read, 2 validated, 0 unmatched, 0 incomplete",
+      "unmatched": [],
+      "bookings": [
+        {
+          "gate": [],
+          "kgPerPallet": 60,
+          "r05": "pass",
+          "feasible": [
+            "A",
+            "B",
+            "C"
+          ],
+          "recommended": "A",
+          "chosen": "A",
+          "totalCost": 180,
+          "dates": {
+            "ready": "2026-11-05",
+            "collection": "2026-11-05",
+            "eta": "2026-11-10"
+          },
+          "bookingId": "F06I",
+          "verdict": "BLOCKED",
+          "rules": {
+            "R-01": "pass",
+            "R-02": "pass",
+            "R-03": "pass",
+            "R-04": "pass",
+            "R-05": "pass",
+            "R-06": "fail",
+            "R-07": "pass",
+            "R-08": "pass",
+            "R-09": "pass",
+            "R-10": "pass"
+          },
+          "hazard": {
+            "sku": "EAR-01",
+            "kind": "implied"
+          }
+        }
+      ]
+    },
+    {
+      "id": "07",
+      "file": "f07-r07-gross-weight.xlsx",
+      "breaks": [
+        "R-07"
+      ],
+      "reconciliation": "2 rows read, 2 validated, 0 unmatched, 0 incomplete",
+      "unmatched": [],
+      "bookings": [
+        {
+          "gate": [],
+          "kgPerPallet": 166.67,
+          "r05": "pass",
+          "feasible": [
+            "A",
+            "B",
+            "C"
+          ],
+          "recommended": "A",
+          "chosen": "A",
+          "totalCost": 540,
+          "dates": {
+            "ready": "2026-11-05",
+            "collection": "2026-11-05",
+            "eta": "2026-11-10"
+          },
+          "bookingId": "F07",
+          "verdict": "SHIP WITH CARE",
+          "rules": {
+            "R-01": "pass",
+            "R-02": "pass",
+            "R-03": "pass",
+            "R-04": "pass",
+            "R-05": "pass",
+            "R-06": "pass",
+            "R-07": "fail",
+            "R-08": "pass",
+            "R-09": "pass",
+            "R-10": "pass"
+          },
+          "repairs": [
+            {
+              "rules": [
+                "R-07"
+              ],
+              "stage": 1,
+              "confidence": "Possible",
+              "floor": 540,
+              "changes": [
+                {
+                  "field": "booking.gross_weight",
+                  "from": 500,
+                  "to": 540
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "08",
+      "file": "f08-r08-appointment.xlsx",
+      "breaks": [
+        "R-08"
+      ],
+      "reconciliation": "2 rows read, 2 validated, 0 unmatched, 0 incomplete",
+      "unmatched": [],
+      "bookings": [
+        {
+          "gate": [],
+          "kgPerPallet": 206.67,
+          "r05": "pass",
+          "feasible": [
+            "A",
+            "B",
+            "C"
+          ],
+          "recommended": "A",
+          "chosen": "A",
+          "totalCost": 540,
+          "dates": {
+            "ready": "2026-11-05",
+            "collection": "2026-11-05",
+            "eta": "2026-11-10"
+          },
+          "bookingId": "F08",
+          "verdict": "SHIP WITH CARE",
+          "rules": {
+            "R-01": "pass",
+            "R-02": "pass",
+            "R-03": "pass",
+            "R-04": "pass",
+            "R-05": "pass",
+            "R-06": "pass",
+            "R-07": "pass",
+            "R-08": "fail",
+            "R-09": "pass",
+            "R-10": "pass"
+          }
+        }
+      ]
+    },
+    {
+      "id": "09",
+      "file": "f09-r09-country-of-origin.xlsx",
+      "breaks": [
+        "R-09"
+      ],
+      "reconciliation": "2 rows read, 2 validated, 0 unmatched, 0 incomplete",
+      "unmatched": [],
+      "bookings": [
+        {
+          "gate": [],
+          "kgPerPallet": 206.67,
+          "r05": "pass",
+          "feasible": [
+            "A",
+            "B",
+            "C"
+          ],
+          "recommended": "A",
+          "chosen": "A",
+          "totalCost": 540,
+          "dates": {
+            "ready": "2026-11-05",
+            "collection": "2026-11-05",
+            "eta": "2026-11-10"
+          },
+          "bookingId": "F09",
+          "verdict": "SHIP WITH CARE",
+          "rules": {
+            "R-01": "pass",
+            "R-02": "pass",
+            "R-03": "pass",
+            "R-04": "pass",
+            "R-05": "pass",
+            "R-06": "pass",
+            "R-07": "pass",
+            "R-08": "pass",
+            "R-09": "fail",
+            "R-10": "pass"
+          }
+        }
+      ]
+    },
+    {
+      "id": "10",
+      "file": "f10-r10-past-date.xlsx",
+      "breaks": [
+        "R-10"
+      ],
+      "reconciliation": "2 rows read, 2 validated, 0 unmatched, 0 incomplete",
+      "unmatched": [],
+      "bookings": [
+        {
+          "gate": [],
+          "kgPerPallet": 206.67,
+          "r05": "pass",
+          "feasible": [
+            "A",
+            "B",
+            "C"
+          ],
+          "recommended": "A",
+          "chosen": "A",
+          "totalCost": 540,
+          "dates": {
+            "ready": "2026-10-20",
+            "collection": "2026-10-20",
+            "eta": "2026-10-26"
+          },
+          "bookingId": "F10",
+          "verdict": "SHIP WITH CARE",
+          "rules": {
+            "R-01": "pass",
+            "R-02": "pass",
+            "R-03": "pass",
+            "R-04": "pass",
+            "R-05": "pass",
+            "R-06": "pass",
+            "R-07": "pass",
+            "R-08": "pass",
+            "R-09": "pass",
+            "R-10": "fail"
+          }
+        }
+      ]
+    },
+    {
+      "id": "11",
+      "file": "f11-two-mistakes-pair.xlsx",
+      "breaks": [
+        "R-02",
+        "R-03"
+      ],
+      "reconciliation": "2 rows read, 2 validated, 0 unmatched, 0 incomplete",
+      "unmatched": [],
+      "bookings": [
+        {
+          "gate": [],
+          "kgPerPallet": 206.67,
+          "r05": "pass",
+          "feasible": [
+            "A",
+            "B",
+            "C"
+          ],
+          "recommended": "A",
+          "chosen": "A",
+          "totalCost": 540,
+          "dates": {
+            "ready": "2026-11-05",
+            "collection": "2026-11-05",
+            "eta": "2026-11-10"
+          },
+          "bookingId": "F11",
+          "verdict": "BLOCKED",
+          "rules": {
+            "R-01": "pass",
+            "R-02": "fail",
+            "R-03": "fail",
+            "R-04": "pass",
+            "R-05": "pass",
+            "R-06": "pass",
+            "R-07": "pass",
+            "R-08": "pass",
+            "R-09": "pass",
+            "R-10": "pass"
+          },
+          "repairs": [
+            {
+              "rules": [
+                "R-02",
+                "R-03"
+              ],
+              "stage": 2,
+              "confidence": "High",
+              "changes": [
+                {
+                  "field": "booking.declared_value",
+                  "from": 5600,
+                  "to": 5400
+                },
+                {
+                  "field": "item.quantity",
+                  "sku": "MUG-01",
+                  "from": 1000,
+                  "to": 1080
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "12",
+      "file": "f12-two-mistakes-fallback.xlsx",
+      "breaks": [
+        "R-02",
+        "R-03",
+        "R-04"
+      ],
+      "reconciliation": "3 rows read, 3 validated, 0 unmatched, 0 incomplete",
+      "unmatched": [],
+      "bookings": [
+        {
+          "gate": [],
+          "kgPerPallet": 333.33,
+          "r05": "pass",
+          "feasible": [
+            "A",
+            "B",
+            "C"
+          ],
+          "recommended": "A",
+          "chosen": "A",
+          "totalCost": 540,
+          "dates": {
+            "ready": "2026-11-05",
+            "collection": "2026-11-05",
+            "eta": "2026-11-10"
+          },
+          "bookingId": "F12",
+          "verdict": "BLOCKED",
+          "rules": {
+            "R-01": "pass",
+            "R-02": "fail",
+            "R-03": "fail",
+            "R-04": "fail",
+            "R-05": "pass",
+            "R-06": "pass",
+            "R-07": "pass",
+            "R-08": "pass",
+            "R-09": "pass",
+            "R-10": "pass"
+          },
+          "repairs": [
+            {
+              "rules": [
+                "R-02",
+                "R-03",
+                "R-04"
+              ],
+              "stage": 3,
+              "confidence": "Possible",
+              "applyDisabled": true,
+              "message": "Two or more numbers conflict and we can't tell which is wrong. Please confirm the actual carton count and quantity."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "13",
+      "file": "f13-two-mistakes-independent.xlsx",
+      "breaks": [
+        "R-04",
+        "R-07"
+      ],
+      "reconciliation": "2 rows read, 2 validated, 0 unmatched, 0 incomplete",
+      "unmatched": [],
+      "bookings": [
+        {
+          "gate": [],
+          "kgPerPallet": 166.67,
+          "r05": "pass",
+          "feasible": [
+            "A",
+            "B",
+            "C"
+          ],
+          "recommended": "A",
+          "chosen": "A",
+          "totalCost": 540,
+          "dates": {
+            "ready": "2026-11-05",
+            "collection": "2026-11-05",
+            "eta": "2026-11-10"
+          },
+          "bookingId": "F13",
+          "verdict": "BLOCKED",
+          "rules": {
+            "R-01": "pass",
+            "R-02": "pass",
+            "R-03": "pass",
+            "R-04": "fail",
+            "R-05": "pass",
+            "R-06": "pass",
+            "R-07": "fail",
+            "R-08": "pass",
+            "R-09": "pass",
+            "R-10": "pass"
+          },
+          "repairs": [
+            {
+              "rules": [
+                "R-04"
+              ],
+              "stage": 1,
+              "confidence": "High",
+              "changes": [
+                {
+                  "field": "booking.cartons",
+                  "from": 96,
+                  "to": 90
+                }
+              ]
+            },
+            {
+              "rules": [
+                "R-07"
+              ],
+              "stage": 1,
+              "confidence": "Possible",
+              "floor": 540,
+              "changes": [
+                {
+                  "field": "booking.gross_weight",
+                  "from": 500,
+                  "to": 540
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "14",
+      "file": "f14-zero-items.xlsx",
+      "breaks": [],
+      "reconciliation": "1 row read, 0 validated, 0 unmatched, 1 incomplete",
+      "unmatched": [],
+      "bookings": [
+        {
+          "gate": [
+            "D-01"
+          ],
+          "kgPerPallet": 300,
+          "r05": "pass",
+          "feasible": [
+            "A",
+            "B",
+            "C"
+          ],
+          "recommended": "A",
+          "chosen": "A",
+          "totalCost": 180,
+          "dates": {
+            "ready": "2026-11-05",
+            "collection": "2026-11-05",
+            "eta": "2026-11-10"
+          },
+          "bookingId": "F14",
+          "verdict": "INCOMPLETE",
+          "rules": {
+            "R-01": "not_checked",
+            "R-02": "not_checked",
+            "R-03": "not_checked",
+            "R-04": "not_checked",
+            "R-05": "pass",
+            "R-06": "not_checked",
+            "R-07": "not_checked",
+            "R-08": "pass",
+            "R-09": "not_checked",
+            "R-10": "pass"
+          }
+        }
+      ]
+    },
+    {
+      "id": "15",
+      "file": "f15-orphan-item.xlsx",
+      "breaks": [],
+      "reconciliation": "3 rows read, 2 validated, 1 unmatched, 0 incomplete",
+      "unmatched": [
+        {
+          "bookingId": "BK-999",
+          "sku": "LMP-03",
+          "row": 5
+        }
+      ],
+      "bookings": [
+        {
+          "gate": [],
+          "kgPerPallet": 206.67,
+          "r05": "pass",
+          "feasible": [
+            "A",
+            "B",
+            "C"
+          ],
+          "recommended": "A",
+          "chosen": "A",
+          "totalCost": 540,
+          "dates": {
+            "ready": "2026-11-05",
+            "collection": "2026-11-05",
+            "eta": "2026-11-10"
+          },
+          "bookingId": "F15",
+          "verdict": "CLEAR TO SHIP",
+          "rules": {
+            "R-01": "pass",
+            "R-02": "pass",
+            "R-03": "pass",
+            "R-04": "pass",
+            "R-05": "pass",
+            "R-06": "pass",
+            "R-07": "pass",
+            "R-08": "pass",
+            "R-09": "pass",
+            "R-10": "pass"
+          }
+        }
+      ]
+    },
+    {
+      "id": "16",
+      "file": "f16-zero-pallets.xlsx",
+      "breaks": [],
+      "reconciliation": "2 rows read, 1 validated, 0 unmatched, 1 incomplete",
+      "unmatched": [],
+      "bookings": [
+        {
+          "gate": [
+            "D-05"
+          ],
+          "kgPerPallet": null,
+          "r05": "cannot_compute",
+          "feasible": [],
+          "recommended": null,
+          "chosen": null,
+          "totalCost": null,
+          "dates": {
+            "ready": "2026-11-05",
+            "collection": "2026-11-05",
+            "eta": null
+          },
+          "bookingId": "F16",
+          "verdict": "INCOMPLETE",
+          "rules": {
+            "R-01": "pass",
+            "R-02": "pass",
+            "R-03": "pass",
+            "R-04": "pass",
+            "R-05": "cannot_compute",
+            "R-06": "pass",
+            "R-07": "pass",
+            "R-08": "pass",
+            "R-09": "pass",
+            "R-10": "pass"
+          }
+        }
+      ]
+    },
+    {
+      "id": "17",
+      "file": "f17-clean.xlsx",
+      "breaks": [],
+      "reconciliation": "2 rows read, 2 validated, 0 unmatched, 0 incomplete",
+      "unmatched": [],
+      "bookings": [
+        {
+          "gate": [],
+          "kgPerPallet": 206.67,
+          "r05": "pass",
+          "feasible": [
+            "A",
+            "B",
+            "C"
+          ],
+          "recommended": "A",
+          "chosen": "A",
+          "totalCost": 540,
+          "dates": {
+            "ready": "2026-11-05",
+            "collection": "2026-11-05",
+            "eta": "2026-11-10"
+          },
+          "bookingId": "F17",
+          "verdict": "CLEAR TO SHIP",
+          "rules": {
+            "R-01": "pass",
+            "R-02": "pass",
+            "R-03": "pass",
+            "R-04": "pass",
+            "R-05": "pass",
+            "R-06": "pass",
+            "R-07": "pass",
+            "R-08": "pass",
+            "R-09": "pass",
+            "R-10": "pass"
+          }
+        }
+      ]
+    },
+    {
+      "id": "18",
+      "file": "f18-demo1.xlsx",
+      "breaks": [
+        "R-05"
+      ],
+      "reconciliation": "2 rows read, 2 validated, 0 unmatched, 0 incomplete",
+      "unmatched": [],
+      "bookings": [
+        {
+          "gate": [],
+          "kgPerPallet": 800,
+          "r05": "no_carrier_fits",
+          "feasible": [],
+          "recommended": null,
+          "chosen": null,
+          "totalCost": null,
+          "dates": {
+            "ready": "2026-11-02",
+            "collection": "2026-11-02",
+            "eta": null
+          },
+          "bookingId": "DEMO-1",
+          "verdict": "BLOCKED",
+          "rules": {
+            "R-01": "pass",
+            "R-02": "pass",
+            "R-03": "pass",
+            "R-04": "pass",
+            "R-05": "fail",
+            "R-06": "pass",
+            "R-07": "pass",
+            "R-08": "pass",
+            "R-09": "pass",
+            "R-10": "pass"
+          },
+          "minPallets": {
+            "A": 4,
+            "B": 3,
+            "C": 4
+          }
+        }
+      ],
+      "variants": [
+        {
+          "change": {
+            "pallets": 3
+          },
+          "expect": {
+            "verdict": "CLEAR TO SHIP",
+            "rules": {
+              "R-01": "pass",
+              "R-02": "pass",
+              "R-03": "pass",
+              "R-04": "pass",
+              "R-05": "pass",
+              "R-06": "pass",
+              "R-07": "pass",
+              "R-08": "pass",
+              "R-09": "pass",
+              "R-10": "pass"
+            },
+            "kgPerPallet": 533.33,
+            "r05": "pass",
+            "feasible": [
+              "B"
+            ],
+            "recommended": "B",
+            "chosen": "B",
+            "totalCost": 660,
+            "dates": {
+              "ready": "2026-11-02",
+              "collection": "2026-11-02",
+              "eta": "2026-11-05"
+            },
+            "changeLog": [
+              "Pallets 2 -> 3",
+              "Weight/pallet 800 -> 533 kg",
+              "R-05 Red (no carrier fits) -> Pass",
+              "Carrier none -> B (3d, GBP 660)"
+            ]
+          }
+        },
+        {
+          "change": {
+            "pallets": 4
+          },
+          "expect": {
+            "verdict": "CLEAR TO SHIP",
+            "rules": {
+              "R-01": "pass",
+              "R-02": "pass",
+              "R-03": "pass",
+              "R-04": "pass",
+              "R-05": "pass",
+              "R-06": "pass",
+              "R-07": "pass",
+              "R-08": "pass",
+              "R-09": "pass",
+              "R-10": "pass"
+            },
+            "kgPerPallet": 400,
+            "r05": "pass",
+            "feasible": [
+              "A",
+              "B",
+              "C"
+            ],
+            "recommended": "B",
+            "chosen": "B",
+            "totalCost": 880,
+            "balancedScores": {
+              "A": 0.6,
+              "B": 0.35,
+              "C": 0.4
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "19",
+      "file": "f19-demo2.xlsx",
+      "breaks": [],
+      "reconciliation": "2 rows read, 2 validated, 0 unmatched, 0 incomplete",
+      "unmatched": [],
+      "bookings": [
+        {
+          "gate": [],
+          "kgPerPallet": 420,
+          "r05": "pass",
+          "feasible": [
+            "A",
+            "B"
+          ],
+          "recommended": "B",
+          "chosen": "B",
+          "totalCost": 660,
+          "dates": {
+            "ready": "2026-11-02",
+            "collection": "2026-11-02",
+            "eta": "2026-11-05"
+          },
+          "bookingId": "DEMO-2",
+          "verdict": "CLEAR TO SHIP",
+          "rules": {
+            "R-01": "pass",
+            "R-02": "pass",
+            "R-03": "pass",
+            "R-04": "pass",
+            "R-05": "pass",
+            "R-06": "pass",
+            "R-07": "pass",
+            "R-08": "pass",
+            "R-09": "pass",
+            "R-10": "pass"
+          }
+        }
+      ],
+      "variants": [
+        {
+          "change": {
+            "pallets": 4
+          },
+          "expect": {
+            "verdict": "CLEAR TO SHIP",
+            "rules": {
+              "R-01": "pass",
+              "R-02": "pass",
+              "R-03": "pass",
+              "R-04": "pass",
+              "R-05": "pass",
+              "R-06": "pass",
+              "R-07": "pass",
+              "R-08": "pass",
+              "R-09": "pass",
+              "R-10": "pass"
+            },
+            "kgPerPallet": 315,
+            "r05": "pass",
+            "feasible": [
+              "A",
+              "B",
+              "C"
+            ],
+            "recommended": "C",
+            "chosen": "C",
+            "totalCost": 1360,
+            "dates": {
+              "ready": "2026-11-02",
+              "collection": "2026-11-02",
+              "eta": "2026-11-04"
+            },
+            "changeLog": [
+              "Pallets 3 -> 4",
+              "Weight/pallet 420 -> 315 kg",
+              "No checks changed",
+              "Carrier B (3d, GBP 660) -> C (2d, GBP 1,360) +GBP 700, 1 day faster"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "20",
+      "file": "f20-seller-override.xlsx",
+      "breaks": [
+        "R-05"
+      ],
+      "reconciliation": "2 rows read, 2 validated, 0 unmatched, 0 incomplete",
+      "unmatched": [],
+      "bookings": [
+        {
+          "gate": [],
+          "kgPerPallet": 500,
+          "r05": "seller_override",
+          "feasible": [
+            "A",
+            "B"
+          ],
+          "recommended": "B",
+          "chosen": "C",
+          "totalCost": 990,
+          "dates": {
+            "ready": "2026-11-02",
+            "collection": "2026-11-02",
+            "eta": "2026-11-04"
+          },
+          "bookingId": "F20",
+          "verdict": "BLOCKED",
+          "rules": {
+            "R-01": "pass",
+            "R-02": "pass",
+            "R-03": "pass",
+            "R-04": "pass",
+            "R-05": "fail",
+            "R-06": "pass",
+            "R-07": "pass",
+            "R-08": "pass",
+            "R-09": "pass",
+            "R-10": "pass"
+          },
+          "overrideFixes": {
+            "switchTo": "B",
+            "switchCost": 630,
+            "addPallets": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "21",
+      "file": "f21-weekend-ready.xlsx",
+      "breaks": [],
+      "reconciliation": "2 rows read, 2 validated, 0 unmatched, 0 incomplete",
+      "unmatched": [],
+      "bookings": [
+        {
+          "gate": [],
+          "kgPerPallet": 206.67,
+          "r05": "pass",
+          "feasible": [
+            "A",
+            "B",
+            "C"
+          ],
+          "recommended": "A",
+          "chosen": "A",
+          "totalCost": 540,
+          "dates": {
+            "ready": "2026-11-07",
+            "collection": "2026-11-09",
+            "eta": "2026-11-16"
+          },
+          "bookingId": "F21",
+          "verdict": "CLEAR TO SHIP",
+          "rules": {
+            "R-01": "pass",
+            "R-02": "pass",
+            "R-03": "pass",
+            "R-04": "pass",
+            "R-05": "pass",
+            "R-06": "pass",
+            "R-07": "pass",
+            "R-08": "pass",
+            "R-09": "pass",
+            "R-10": "pass"
+          },
+          "etaAll": {
+            "A": "2026-11-16",
+            "B": "2026-11-12",
+            "C": "2026-11-11"
+          }
+        }
+      ]
+    }
+  ]
+}
