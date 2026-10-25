@@ -171,3 +171,37 @@ $ npx vitest run
 - Demo 1 (2 → 3 pallets) log: `Pallets 2 -> 3 | Weight/pallet 800 -> 533 kg | R-05 Red (no carrier fits) -> Pass | Carrier none -> B (3d, GBP 660)`. Demo 2 (3 → 4): `Pallets 3 -> 4 | Weight/pallet 420 -> 315 kg | No checks changed | Carrier B (3d, GBP 660) -> C (2d, GBP 1,360) +GBP 700, 1 day faster`. Weekend: collection Mon 9 Nov, A ETA Mon 16 Nov. Thursday: A ETA Tue 10 Nov.
 
 **Gate 2:** PASS.
+
+**Commit:** `0ec9077 phase 2: …`, pushed.
+
+---
+
+## Phase 3 — Parser
+
+**`lib/parse.ts`:** sheets are found by name (with a fallback to whichever sheet carries the right headers). The header row is the row (within the first 50) with the most recognised column names, matched case-, punctuation- and "(kg)"-insensitively with a few aliases. Column order is irrelevant. The grey example row is skipped **by content** (only if the row straight after the header is the template's BK-001 / Northfield Goods / … example or the MUG-01 item), so a judge who overwrote row 3 with real data doesn't lose it. Blank rows and extra whitespace are tolerated. HS codes are read as text (numbers keep their digits; a trailing `.0` is stripped by R-01). Dates accept `DD-MM-YYYY` text, Excel date serials, and ISO as a lenient extra. Numbers accept `£`, commas and a `kg` suffix; non-numeric or negative → **D-06 quarantine**. Items are linked to bookings by trimmed, case-insensitive ID. Orphans go to Unmatched (D-03). Duplicate IDs are flagged on every copy (D-04). A non-xlsx file gives a friendly note and never throws.
+**`validateWorkbook` / `reconcile`** (in `validate.ts`) produce the reconciliation line using the buckets from A-7.
+
+- P-1 An invalid dropdown value (destination type or priority) becomes blank plus a note. A blank destination type then triggers D-02 "Booking is missing destination type (R-08)". A blank priority triggers the "assumed Balanced" FYI.
+
+**Tests (`tests/parser.test.ts`, 31):** all 22 official-layout fixtures (reconciliation line equals `expected.json`; parsed bookings deep-equal the independent test loader; 2 example rows skipped); the blank template itself; header moved down two rows; reordered columns (both sheets); a corrupt row (`Pallets: "two"`, gross `-5`, date `31-02-2026`, quantity `"abc"`) → 4 D-06 quarantines, R-05 cannot compute, INCOMPLETE; blank rows, whitespace, `" berlin "`, an Excel serial date, HS `"691200.0"` and `90121`, `"bk-302"` matching `BK-302`; duplicate IDs; a non-xlsx file; 1 booking; 50 bookings (10 with planted mistakes).
+
+**Gate 3 evidence**
+
+```
+$ npx vitest run tests/parser.test.ts
+50-booking file parsed + validated in 86 ms
+ ✓ tests/parser.test.ts (31 tests)
+$ npx vitest run      → Test Files 3 passed, Tests 116 passed (0 skipped)
+$ npx tsc --noEmit    → clean
+```
+| Test workbook | Reconciliation line |
+|---|---|
+| official (each fixture) | as in `expected.json`, e.g. f15 `3 rows read, 2 validated, 1 unmatched, 0 incomplete` |
+| header moved down 2 rows | `4 rows read, 4 validated, 0 unmatched, 0 incomplete` |
+| reordered columns | `4 rows read, 4 validated, 0 unmatched, 0 incomplete` |
+| corrupt row | `5 rows read, 2 validated, 1 unmatched, 2 incomplete` |
+| duplicate IDs | `3 rows read, 1 validated, 0 unmatched, 0 incomplete, 2 duplicate` |
+| 1 booking | `2 rows read, 2 validated, 0 unmatched, 0 incomplete` |
+| 50 bookings | `150 rows read, 150 validated, 0 unmatched, 0 incomplete` (86 ms) |
+
+**Gate 3:** PASS.

@@ -2,6 +2,7 @@
 import { CURRENCY, ITEM_ORIGIN_COUNTRIES, ORIGIN_CITIES, ORIGIN_COUNTRY } from "./config";
 import { buildContext } from "./context";
 import { plural } from "./format";
+import type { ParsedWorkbook } from "./parse";
 import { computeRepairs } from "./repair";
 import { runRules } from "./rulebook";
 import type { Booking, BookingResult, Env, GateNote, RuleResult, Verdict } from "./types";
@@ -61,6 +62,53 @@ function fyiNotes(b: Booking, priorityAssumed: boolean): string[] {
   for (const it of b.items) lines.set(it.sku, (lines.get(it.sku) ?? 0) + 1);
   for (const [sku, n] of lines) if (n > 1 && sku) f.push(`${sku} appears on ${plural(n, "line")} (allowed, e.g. a part carton booked separately).`);
   return f;
+}
+
+export interface Reconciliation {
+  line: string;
+  rowsRead: number;
+  validated: number;
+  unmatched: number;
+  incomplete: number;
+  duplicate: number;
+}
+
+/**
+ * Every data row lands in exactly one bucket (BUILD_LOG A-7): duplicate (D-04 booking rows),
+ * unmatched (D-03 item rows), incomplete (the row's own data is missing/quarantined, or a
+ * booking with no items), otherwise validated.
+ */
+export function reconcile(parsed: ParsedWorkbook, results: BookingResult[]): Reconciliation {
+  let validated = 0, incomplete = 0, duplicate = 0;
+  const BOOKING_GATE = new Set(["D-01", "D-05"]);
+  const seenItems = new Map<string, boolean>();
+  for (const r of results) {
+    if (r.booking.duplicateOf) duplicate++;
+    else if (r.gate.some((g) => !g.rowId && (BOOKING_GATE.has(g.code) || g.code === "D-06" || g.code === "D-02"))) incomplete++;
+    else validated++;
+    for (const it of r.booking.items) {
+      const bad = r.gate.some((g) => g.rowId === it.rowId && (g.code === "D-02" || g.code === "D-06"));
+      seenItems.set(it.rowId, (seenItems.get(it.rowId) ?? false) || bad);
+    }
+  }
+  for (const bad of seenItems.values()) bad ? incomplete++ : validated++;
+  const unmatched = parsed.orphans.length;
+  const rowsRead = parsed.bookingRowsRead + parsed.itemRowsRead;
+  let line = `${rowsRead} ${rowsRead === 1 ? "row" : "rows"} read, ${validated} validated, ${unmatched} unmatched, ${incomplete} incomplete`;
+  if (duplicate) line += `, ${duplicate} duplicate`;
+  return { line, rowsRead, validated, unmatched, incomplete, duplicate };
+}
+
+export interface WorkbookResult {
+  results: BookingResult[];
+  orphans: ParsedWorkbook["orphans"];
+  reconciliation: Reconciliation;
+  notes: string[];
+}
+
+export function validateWorkbook(parsed: ParsedWorkbook, env: Env): WorkbookResult {
+  const results = parsed.bookings.map((b) => validateBooking(b, env));
+  return { results, orphans: parsed.orphans, reconciliation: reconcile(parsed, results), notes: parsed.notes };
 }
 
 export function validateBooking(booking: Booking, env: Env): BookingResult {
