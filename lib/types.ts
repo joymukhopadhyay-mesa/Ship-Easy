@@ -200,4 +200,12 @@ export interface Env {
   weights?: Weights;
   /** Model-classified implied hazards by item rowId (may only ADD "implied"). */
   hazardHints?: Record<string, HazardKind>;
+  /** Chat: booking fields the app computes from the items (never "blamed" by a repair; recomputed with it). */
+  derived?: { declaredValue: boolean; cartons: boolean };
+  /** Chat: values the seller explicitly confirmed, as "item.quantity@<rowId>" (repairs touching them are never High). */
+  confirmed?: string[];
+  /** Chat: optional fields not asked yet, as "hsCode@<rowId>" / "countryOfOrigin@<rowId>" (their rules are "not checked"). */
+  pendingFields?: string[];
+  /** Chat: details still being collected; while non-empty the verdict is INCOMPLETE. */
+  capture?: string[];
 }

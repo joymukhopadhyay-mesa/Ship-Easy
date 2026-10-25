@@ -123,7 +123,8 @@ export const HazardOut = z.object({ results: z.array(z.object({ index: z.number(
 export const HAZARD_SYSTEM = `Classify each product description for restricted dangerous goods on a road shipment: lithium batteries, aerosols, flammable liquids.
 "explicit" = the description itself names a lithium battery, aerosol or flammable liquid.
 "implied" = the product class normally contains one (e.g. wireless earbuds, Bluetooth speaker, cordless vacuum, power bank, smartwatch, nail polish, hand sanitiser, perfume, hairspray).
-"none" = otherwise. Return one result per input index. Keep reason under 12 words.`;
+"none" = otherwise. If you are unsure whether the product normally contains one (e.g. chargers, rechargeable or battery-powered devices), answer "implied": the seller can confirm it is safe with one click.
+Return one result per input index. Keep reason under 12 words.`;
 
 /** Only "implied" (or "explicit", which is folded into implied) may be added by the model; it can never downgrade. */
 export function hazardHints(rowIds: string[], out: z.infer<typeof HazardOut>): Record<string, HazardKind> {

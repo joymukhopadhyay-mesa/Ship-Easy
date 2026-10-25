@@ -11,7 +11,7 @@ import { parseWorkbook, type OrphanRow } from "@/lib/parse";
 import { emptyPatch, PatchSchema, type Patch } from "@/lib/patch";
 import type { ExplainInput } from "@/lib/modelContract";
 import { reportHtml } from "@/lib/report";
-import { applyEdits, newSession, type Edit, type Session } from "@/lib/session";
+import { applyEdits, newSession, revalidate, type Edit, type Session } from "@/lib/session";
 import type { BookingResult, Env, HazardKind, Item, Weights } from "@/lib/types";
 import { reconcile, validateBooking, type Reconciliation } from "@/lib/validate";
 import { BookingCard } from "./BookingCard";
@@ -39,6 +39,15 @@ const download = (data: BlobPart, name: string, type: string) => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
+/** Identifies the exact booking state a narrative was written for. */
+function narrativeKey(scope: string, r: BookingResult): string {
+  const fails = r.rules.filter((x) => x.status !== "pass").map((x) => `${x.id}:${x.status}:${x.state ?? ""}`).join(",");
+  const str = JSON.stringify([r.booking, r.verdict, fails, r.carrier.chosen, r.carrier.weights]);
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+  return `${scope}#${r.booking.bookingId}#${h >>> 0}`;
+}
+
 export default function App({ today }: { today: string }) {
   const [tab, setTab] = useState<"chat" | "upload">("chat");
   const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
@@ -47,8 +56,13 @@ export default function App({ today }: { today: string }) {
   const [localOnly, setLocalOnlyState] = useState(false);
   const localOnlyRef = useRef(false);
   const setLocalOnly = (v: boolean) => { localOnlyRef.current = v; setLocalOnlyState(v); };
-  const [narratives, setNarratives] = useState<Record<string, { text: string; logLen: number }>>({});
+  // AI narratives are keyed by the exact booking state they describe, so a stale one can never show.
+  const [narratives, setNarratives] = useState<Record<string, string>>({});
+  const inFlight = useRef(new Set<string>());
+  const [chatRun, setChatRun] = useState(1);
+  const hintsRef = useRef<Record<string, HazardKind>>({});
   const hazardChecked = useRef(new Set<string>());
+  const implicated = useRef(new Set<string>());
   const [banner, setBanner] = useState<string | null>(null);
   const [sent, setSent] = useState<SentRecord[]>([]);
   const [showAssumptions, setShowAssumptions] = useState(false);
@@ -75,11 +89,12 @@ export default function App({ today }: { today: string }) {
   const [selected, setSelected] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadScope, setUploadScope] = useState("file");
 
   // weights change -> re-validate everything (no log entry: it's a setting, not a booking edit)
   useEffect(() => {
-    setChat((c) => ({ ...c, session: { ...c.session, result: validateBooking(c.session.booking, env) } }));
-    setSessions((ss) => ss.map((s) => ({ ...s, result: validateBooking(s.booking, env) })));
+    setChat((c) => ({ ...c, session: revalidate(c.session, env) }));
+    setSessions((ss) => ss.map((s) => revalidate(s, env)));
   }, [env]);
 
   const stamp = () => londonStamp(new Date());
@@ -121,18 +136,21 @@ export default function App({ today }: { today: string }) {
   }, [today]);
 
   /** R-06: only descriptions the local list does NOT already flag are sent; hints can only ADD "implied". */
-  const checkHazards = async (items: Item[]) => {
-    if (localOnlyRef.current) return;
+  const checkHazards = async (items: Item[]): Promise<Record<string, HazardKind>> => {
+    if (localOnlyRef.current) return {};
     const uniq = [...new Set(items.filter((i) => i.description && classifyHazard(i.description).kind === "none" && !hazardChecked.current.has(i.description)).map((i) => i.description))];
-    if (!uniq.length) return;
+    const flaggedBefore = new Set(Object.keys(hintsRef.current));
+    const known: Record<string, HazardKind> = {};
+    for (const it of items) if (!flaggedBefore.has(it.rowId) && implicated.current.has(it.description)) known[it.rowId] = "implied";
+    if (!uniq.length) { if (Object.keys(known).length) { hintsRef.current = { ...hintsRef.current, ...known }; setHazardHints(hintsRef.current); } return known; }
     uniq.forEach((d) => hazardChecked.current.add(d));
     const j = await postModel<{ results: { index: number; kind: string }[] }>("hazard", { descriptions: uniq });
-    if (!j) return;
-    const flagged = new Set(j.results.filter((r) => r.kind !== "none").map((r) => uniq[r.index]).filter(Boolean));
-    if (!flagged.size) return;
-    const hints: Record<string, HazardKind> = {};
-    for (const it of items) if (flagged.has(it.description)) hints[it.rowId] = "implied";
-    setHazardHints((h) => ({ ...h, ...hints }));
+    if (!j) return known;
+    j.results.filter((r) => r.kind !== "none").forEach((r) => uniq[r.index] && implicated.current.add(uniq[r.index]));
+    const hints: Record<string, HazardKind> = { ...known };
+    for (const it of items) if (implicated.current.has(it.description) && !flaggedBefore.has(it.rowId)) hints[it.rowId] = "implied";
+    if (Object.keys(hints).length) { hintsRef.current = { ...hintsRef.current, ...hints }; setHazardHints(hintsRef.current); }
+    return hints;
   };
 
   const explainInput = (r: BookingResult): ExplainInput => ({
@@ -146,17 +164,25 @@ export default function App({ today }: { today: string }) {
     }).slice(0, 12),
     carrier: carrierReason(r.carrier).reason.slice(0, 400),
   });
-  /** ONE batched call per upload (or per completed chat booking). */
-  const explain = async (results: BookingResult[], logLens: number[]) => {
+  /** ONE batched call per upload; one call per changed booking afterwards. Stored under each booking's exact state. */
+  const explain = async (scope: string, results: BookingResult[]) => {
     if (localOnlyRef.current || !results.length) return;
-    const j = await postModel<{ narratives: { ref: string; text: string }[] }>("explain", { bookings: results.slice(0, 60).map(explainInput) });
-    if (!j) return;
-    const map: Record<string, { text: string; logLen: number }> = {};
-    for (const n of j.narratives) {
-      const k = results.findIndex((r) => r.booking.bookingId === n.ref);
-      if (k >= 0) map[n.ref] = { text: n.text, logLen: logLens[k] };
+    const keys = results.map((r) => narrativeKey(scope, r));
+    const todo = results.filter((_, k) => !inFlight.current.has(keys[k]));
+    if (!todo.length) return;
+    keys.forEach((k) => inFlight.current.add(k));
+    try {
+      const j = await postModel<{ narratives: { ref: string; text: string }[] }>("explain", { bookings: todo.slice(0, 60).map(explainInput) });
+      if (!j) return;
+      const map: Record<string, string> = {};
+      for (const n of j.narratives) {
+        const k = results.findIndex((r) => r.booking.bookingId === n.ref);
+        if (k >= 0) map[keys[k]] = n.text;
+      }
+      setNarratives((x) => ({ ...x, ...map }));
+    } finally {
+      keys.forEach((k) => inFlight.current.delete(k));
     }
-    setNarratives((x) => ({ ...x, ...map }));
   };
 
   const send = async (text: string, base?: ChatState) => {
@@ -167,12 +193,13 @@ export default function App({ today }: { today: string }) {
     setMsgs((m) => [...m, { role: "user", text: message, at: stamp() }]);
     try {
       const st = base ?? chat;
-      const patch = await getPatch(message, st);
-      const t = chatTurn(st, patch ?? emptyPatch(), message, env, stamp());
+      const at = stamp();
+      const patch = (await getPatch(message, st)) ?? emptyPatch();
+      let t = chatTurn(st, patch, message, { ...env, hazardHints: hintsRef.current }, at);
+      const newHints = await checkHazards(t.state.session.booking.items);
+      if (Object.keys(newHints).length) t = chatTurn(st, patch, message, { ...env, hazardHints: hintsRef.current }, at);
       setChat(t.state);
       setMsgs((m) => [...m, { role: "bot", text: t.reply, at: stamp() }]);
-      void checkHazards(t.state.session.booking.items);
-      if (t.state.baselined && !st.baselined) void explain([t.state.session.result], [t.state.session.log.length]);
     } catch {
       setMsgs((m) => [...m, { role: "bot", text: "Sorry, I couldn't process that. Please try rephrasing.", at: stamp() }]);
     } finally {
@@ -180,8 +207,15 @@ export default function App({ today }: { today: string }) {
     }
   };
 
+  const dropHints = (prefix: string) => {
+    hintsRef.current = Object.fromEntries(Object.entries(hintsRef.current).filter(([k]) => !k.startsWith(prefix)));
+    setHazardHints(hintsRef.current);
+  };
+
   const resetChat = (intro = "Started over. What are you shipping?") => {
     const fresh = newChat(env);
+    setChatRun((n) => n + 1); // a new run never reuses an earlier run's explanation
+    dropHints("c"); // chat row ids restart at c1, so the previous run's hazard flags must not carry over
     setChat(fresh);
     setMsgs([{ role: "bot", at: "", text: intro }]);
     return fresh;
@@ -191,6 +225,7 @@ export default function App({ today }: { today: string }) {
     setUploadError(null);
     try {
       const parsed = parseWorkbook(buf);
+      dropHints("i");
       const ss = parsed.bookings.map((b) => newSession("file", b, env));
       setSessions(ss);
       setOrphans(parsed.orphans);
@@ -198,7 +233,12 @@ export default function App({ today }: { today: string }) {
       setNotes(parsed.notes);
       setSelected(0);
       setFileName(name);
-      void checkHazards(parsed.bookings.flatMap((b) => b.items)).then(() => explain(ss.map((x) => x.result), ss.map(() => 0)));
+      const scope = `file:${name}:${Date.now()}`;
+      setUploadScope(scope);
+      void checkHazards(parsed.bookings.flatMap((b) => b.items)).then(() => {
+        const envNow = { ...env, hazardHints: hintsRef.current };
+        return explain(scope, ss.map((x) => revalidate(x, envNow).result));
+      });
     } catch {
       setUploadError("That file couldn't be read. Please upload the Bookings and Items sheets as an .xlsx file.");
     }
@@ -222,6 +262,17 @@ export default function App({ today }: { today: string }) {
   const editUpload = (edits: Edit[], source: "apply" | "edit" | "action" | "declaration") =>
     setSessions((ss) => ss.map((s, k) => (k === selected ? applyEdits(s, edits, source, env, stamp()).session : s)));
 
+  const chatScope = `chat:${chatRun}`;
+  const chatReady = chat.session.capture === null && !chat.pending && chat.baselined;
+  const shown = tab === "chat" ? (chatReady ? { scope: chatScope, result: chat.session.result } : null) : sessions[selected] ? { scope: uploadScope, result: sessions[selected].result } : null;
+  const shownKey = shown ? narrativeKey(shown.scope, shown.result) : null;
+  useEffect(() => {
+    if (!shown || !shownKey || localOnly || narratives[shownKey]) return;
+    const id = setTimeout(() => void explain(shown.scope, [shown.result]), 900);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shownKey, localOnly]);
+
   const cardFor = (mode: "chat" | "upload") => {
     const s = mode === "chat" ? chat.session : sessions[selected];
     if (!s) return null;
@@ -237,7 +288,7 @@ export default function App({ today }: { today: string }) {
         onWeights={setWeights}
         onEdits={onEdits}
         showAddPallet
-        narrative={narratives[s.booking.bookingId] ? narratives[s.booking.bookingId].text + (narratives[s.booking.bookingId].logLen !== s.log.length ? " (Written before your latest edits; the findings above are current.)" : "") : null}
+        narrative={localOnly ? null : mode === "chat" && !chatReady ? null : (narratives[narrativeKey(mode === "chat" ? chatScope : uploadScope, s.result)] ?? "Updating the explanation for the latest version of this booking…")}
         onConfirmHazard={(rowId) => onEdits([{ path: "item.hazardConfirmedAt", rowId, value: stamp() }], "declaration")}
         onDownloadXlsx={() => download(correctedWorkbook(allResults), mode === "chat" ? "ship-easy-booking.xlsx" : `corrected-${fileName ?? "bookings.xlsx"}`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
         onDownloadReport={() => download(reportHtml({ title: "Ship Easy pre-flight report", today, results: allResults, logs: allLogs, reconciliation: mode === "upload" ? recon?.line : undefined, orphans: mode === "upload" ? orphans : undefined }), "ship-easy-report.html", "text/html")}
@@ -288,7 +339,7 @@ export default function App({ today }: { today: string }) {
             </div>
             <div className="border-t border-line p-4">
               <div className="mb-2 flex flex-wrap gap-1.5">
-                {EXAMPLES.map((e) => <button key={e.label} data-testid={e.testId} onClick={() => send(e.text, resetChat(`Example: ${e.label}`))} className="rounded-full bg-[#F4F5F7] px-2.5 py-1 text-[11px] font-medium hover:bg-zinc-200">{e.label}</button>)}
+                {!msgs.some((m) => m.role === "user") && EXAMPLES.map((e) => <button key={e.label} data-testid={e.testId} onClick={() => send(e.text, resetChat(`Example: ${e.label}`))} className="rounded-full bg-[#F4F5F7] px-2.5 py-1 text-[11px] font-medium hover:bg-zinc-200">{e.label}</button>)}
                 {chat.baselined && <button data-testid="chip-add-pallet" onClick={() => send("add another pallet")} className="rounded-full bg-ink px-2.5 py-1 text-[11px] font-semibold text-white">+ add another pallet</button>}
               </div>
               <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); send(input); }}>

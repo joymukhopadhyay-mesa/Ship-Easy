@@ -53,7 +53,9 @@ export const RULES: Rule[] = [
       const bad: string[] = [];
       const nums: string[] = [];
       let caveat: string | undefined;
+      const waiting = ctx.items.filter((i) => !i.hsCode && ctx.pendingFields.has(`hsCode@${i.rowId}`));
       for (const it of ctx.items) {
+        if (waiting.includes(it)) continue;
         const d = hsDigits(it.hsCode);
         if (d === null || d.length < HS_MIN_DIGITS) {
           bad.push(it.rowId);
@@ -64,6 +66,7 @@ export const RULES: Rule[] = [
           }
         }
       }
+      if (!bad.length && waiting.length) return notChecked("the HS code hasn't been asked for yet");
       if (!bad.length) return { status: "pass", message: "Every item has an HS code of at least 6 digits." };
       return {
         status: "fail",
@@ -190,7 +193,9 @@ export const RULES: Rule[] = [
     ...meta("R-09"),
     check(ctx) {
       if (ctx.noItems) return notChecked("the booking has no items");
-      const bad = ctx.items.filter((i) => !i.countryOfOrigin);
+      const waiting = ctx.items.filter((i) => !i.countryOfOrigin && ctx.pendingFields.has(`countryOfOrigin@${i.rowId}`));
+      const bad = ctx.items.filter((i) => !i.countryOfOrigin && !waiting.includes(i));
+      if (!bad.length && waiting.length) return notChecked("the country of origin hasn't been asked for yet");
       if (!bad.length) return { status: "pass", message: "Every item has a country of origin." };
       return { status: "fail", message: `Country of origin missing for ${bad.map((i) => label(ctx, i.rowId)).join("; ")}.`, itemRowIds: bad.map((i) => i.rowId) };
     },

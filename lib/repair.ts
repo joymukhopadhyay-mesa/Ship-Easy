@@ -35,6 +35,20 @@ export function applyChanges(booking: Booking, changes: Change[]): Booking {
   return b;
 }
 
+/** Chat: booking totals the app computes from the items follow any item change (they are not evidence). */
+export function derive(b: Booking, env: Env): Booking {
+  if (!env.derived) return b;
+  const out = { ...b };
+  const all = (f: (i: Booking["items"][number]) => boolean) => b.items.length > 0 && b.items.every(f);
+  if (env.derived.declaredValue && all((i) => i.quantity != null && i.unitPrice != null)) out.declaredValue = round2(b.items.reduce((t, i) => t + i.quantity! * i.unitPrice!, 0));
+  if (env.derived.cartons && all((i) => i.cartons != null)) out.cartons = b.items.reduce((t, i) => t + i.cartons!, 0);
+  return out;
+}
+
+const isDerived = (env: Env, field: MutableField) =>
+  (field === "booking.declared_value" && !!env.derived?.declaredValue) || (field === "booking.cartons" && !!env.derived?.cartons);
+const confirmedIn = (env: Env, cs: Change[]) => cs.filter((c) => c.rowId && env.confirmed?.includes(`${c.field}@${c.rowId}`));
+
 const current = (b: Booking, field: MutableField, rowId?: string): number | string | null => {
   const bk = BOOKING_KEY[field];
   if (bk) return b[bk] as number | null;
@@ -102,7 +116,7 @@ function mkChange(b: Booking, field: MutableField, to: number, rowId?: string): 
 interface Scored { changes: Change[]; fixed: number; broken: number; rel: number; after: Eval }
 
 function trial(b: Booking, env: Env, base: Eval, failing: string[], changes: Change[]): Scored | null {
-  const after = evaluate(applyChanges(b, changes), env);
+  const after = evaluate(derive(applyChanges(b, changes), env), env);
   if (failing.some((k) => after.keys.has(k))) return null; // must clear every failing check in the cluster
   const broken = [...after.keys].filter((k) => !base.keys.has(k)).length;
   if (broken > 0) return null; // invariant: no suggested value may fail a rule
@@ -146,7 +160,7 @@ function confidenceFor(changes: Change[]): "High" | "Possible" {
 function repairCluster(b: Booking, env: Env, base: Eval, failing: string[]): Repair[] {
   const rules = [...new Set(failing.map(ruleOf))].sort() as RuleId[];
   const fields = new Map<string, { field: MutableField; rowId?: string }>();
-  for (const k of failing) for (const f of nodeFields(k, base.ctx)) fields.set(fkey(f), f);
+  for (const k of failing) for (const f of nodeFields(k, base.ctx)) if (!isDerived(env, f.field)) fields.set(fkey(f), f);
 
   // ---- Stage 1: single field
   const accepted: Scored[] = [];
@@ -168,12 +182,15 @@ function repairCluster(b: Booking, env: Env, base: Eval, failing: string[]): Rep
       const tied = accepted.filter((a) => Math.abs(a.rel - top.rel) < 1e-9);
       return [{ rules, stage: 1, confidence: "Ambiguous", changes: [], options: tied.map((t) => t.changes), applyEnabled: false, arithmetic: tied.flatMap((t) => arithmetic(b, t)), message: `Two fixes fit equally well: ${tied.map((t) => t.changes.map(describe).join(" + ")).join(" OR ")}. Please tell us which number is right.` }];
     }
-    const conf = accepted.length === 1 ? confidenceFor(top.changes) : "Possible";
+    const confirmedHit = confirmedIn(env, top.changes);
+    const conf = accepted.length === 1 && !confirmedHit.length ? confidenceFor(top.changes) : "Possible";
     const r: Repair = {
       rules, stage: 1, confidence: conf, changes: top.changes, applyEnabled: conf === "High",
       arithmetic: arithmetic(b, top),
       message: floorRepair
         ? `Gross weight must be at least ${kg(Number(top.changes[0].to))} (the goods alone, before cartons and pallets). Please check the real weighed total; we can't know the packaging weight.`
+        : confirmedHit.length
+        ? `You confirmed ${confirmedHit.map((c) => `${c.sku} ${c.field === "item.quantity" ? "quantity" : "cartons"} = ${fmtNum(Number(c.from))}`).join(" and ")}, so we won't change it. The numbers only add up if ${top.changes.map(describe).join(" + ")}; please check the units per carton and the real carton count.`
         : `Change ${top.changes.map(describe).join(" + ")}.${accepted.length > 1 ? ` Other fits: ${accepted.slice(1).map((a) => a.changes.map(describe).join(" + ")).join("; ")}.` : ""}`,
     };
     if (floorRepair) r.floor = Number(top.changes[0].to);
@@ -189,9 +206,10 @@ function repairCluster(b: Booking, env: Env, base: Eval, failing: string[]): Rep
       for (const v of candidates(b, base.ctx, itemField, it.rowId)) {
         const ich = mkChange(b, itemField, v, it.rowId);
         if (!ich) continue;
-        const mid = applyChanges(b, [ich]);
+        const mid = derive(applyChanges(b, [ich]), env);
         const midCtx = buildContext(mid, env);
         for (const bf of ["booking.declared_value", "booking.cartons", "booking.gross_weight"] as MutableField[]) {
+          if (isDerived(env, bf)) continue;
           if (++combos > PAIR_SEARCH_CAP) break outer;
           const bv = candidates(mid, midCtx, bf)[0];
           if (bv === undefined) continue;
@@ -208,7 +226,7 @@ function repairCluster(b: Booking, env: Env, base: Eval, failing: string[]): Rep
     }
   }
   if (pairs.length === 1) {
-    const conf = confidenceFor(pairs[0].changes);
+    const conf = confirmedIn(env, pairs[0].changes).length ? "Possible" : confidenceFor(pairs[0].changes);
     return [{ rules, stage: 2, confidence: conf, changes: pairs[0].changes, applyEnabled: conf === "High", arithmetic: arithmetic(b, pairs[0]), message: `Two numbers were wrong. Change ${pairs[0].changes.map(describe).join(" and ")}; this is the only pair of changes that makes every check pass.` }];
   }
   if (pairs.length > 1) {
@@ -219,6 +237,7 @@ function repairCluster(b: Booking, env: Env, base: Eval, failing: string[]): Rep
   return failing.map((k) => {
     const opts: Change[] = [];
     for (const f of nodeFields(k, base.ctx)) {
+      if (isDerived(env, f.field)) continue;
       if (k === "R-02" && f.field !== "booking.declared_value") continue;
       if (k === "R-04" && f.field !== "booking.cartons") continue;
       for (const v of candidates(b, base.ctx, f.field, f.rowId)) {
@@ -274,7 +293,7 @@ export function computeRepairs(booking: Booking, env: Env, results: RuleResult[]
   const clusterRepairs = [...groups.values()].map((g) => repairCluster(booking, env, base, g.sort())).flat();
 
   // A High fix elsewhere that also clears R-07 makes the separate weight-floor note redundant.
-  const highClearsR07 = clusterRepairs.some((r) => r.confidence === "High" && !r.rules.includes("R-07") && !evaluate(applyChanges(booking, r.changes), env).keys.has("R-07"));
+  const highClearsR07 = clusterRepairs.some((r) => r.confidence === "High" && !r.rules.includes("R-07") && !evaluate(derive(applyChanges(booking, r.changes), env), env).keys.has("R-07"));
   for (const r of clusterRepairs) {
     if (highClearsR07 && r.rules.length === 1 && r.rules[0] === "R-07") continue;
     repairs.push(r);

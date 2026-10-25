@@ -91,7 +91,7 @@ const ORIGINS: [RegExp, string][] = [
   [/\b(?:germany|german)\b/i, "Germany"],
 ];
 
-const NOT_ITEM = /^(?:pallets?|cartons?|boxes|box|cases?|kg|kgs|kilos?|kilograms?|tonnes?|g|grams?|units?\s+(?:per|a|in|to)|per\b|a carton|to a|days?|weeks?|hours?|percent|%|gbp|pounds?|each|of them|in total|total|items?\b|skus?\b|products?\b|lines?\b|dollars?|euros?|am|pm|st|nd|rd|th|x\s*\d)/i;
+const NOT_ITEM = /^(?:units?\s*$|pcs\s*$|pieces?\s*$|of them\s*$|pallets?|cartons?|boxes|box|cases?|kg|kgs|kilos?|kilograms?|tonnes?|g|grams?|units?\s+(?:per|a|in|to)|per\b|a carton|to a|days?|weeks?|hours?|percent|%|gbp|pounds?|each|of them|in total|total|items?\b|skus?\b|products?\b|lines?\b|dollars?|euros?|am|pm|st|nd|rd|th|x\s*\d)/i;
 const STOP = String.raw`(?=\s*(?:,|;|\.(?:\s|$)|$|\bat\b|\bto\b|\bfrom\b|\bfor\b|@|\beach\b|\bpriced\b|\bcosting\b|\bcost\b|\bin\b|\bpacked\b|\bwith\b|\bthat\b|\bwhich\b|\bmade\b|\bweigh|\(|£|\band\b|\bplus\b|\bready\b|\bgoing\b|\bheading\b|\bon\b|\bvia\b|\bby\b|\bcollect|\bhs\b|\bshipping\b|\bsent\b|\bneed\b|-))`;
 
 interface ItemHit { start: number; end: number; qty: number; qtySrc: string; desc: string; descSrc: string }
@@ -210,8 +210,10 @@ export function extractLocal(message: string, ctx: ExtractContext): Patch {
       else p.items.push({ op: "add", sku: null, fields });
     });
   } else {
-    // Attributes for existing items ("£5 each, 12 per carton").
+    // Attributes for existing items ("£5 each, 12 per carton", "it really is 1,000 units in 90 cartons").
     const attrs = itemAttrs(msg);
+    const qm = new RegExp(String.raw`\b(${NUM})\s*(?:units?|pcs|pieces)\b(?!\s*(?:per|a carton|to a|in a|in each|in every|\/))`, "i").exec(masked);
+    if (qm) attrs.quantity = sv(toNum(qm[1]), msg.slice(qm.index, qm.index + qm[0].length));
     // Bare answers to a single asked slot
     const exp = ctx.expecting;
     const bareNum = new RegExp(String.raw`^\s*(?:about|around|roughly|approx\.?)?\s*£?\s*(${NUM})\s*(kg|kgs|kilos?|g|grams?)?\s*(?:each|units?|pallets?|cartons?)?\s*[.!]?\s*$`, "i").exec(msg);

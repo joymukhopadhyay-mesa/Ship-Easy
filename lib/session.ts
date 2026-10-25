@@ -14,8 +14,34 @@ export interface Session {
   overrides: { cartons: boolean; declaredValue: boolean };
   /** Chat mode: item cartons the seller stated (not computed from quantity ÷ units per carton). */
   sellerCartons: string[];
+  /** Chat mode: values the seller explicitly insisted on ("item.quantity@<rowId>"). */
+  confirmed: string[];
+  /** Chat mode: what the conversation is still collecting (verdict stays INCOMPLETE meanwhile). */
+  capture: Capture | null;
   log: ChangeLogEntry[];
   result: BookingResult;
+}
+
+export interface Capture {
+  missing: string[];
+  pendingFields: string[];
+}
+
+/** The engine environment for this session (chat adds derived / confirmed / still-collecting context). */
+export function envFor(s: Pick<Session, "mode" | "overrides" | "confirmed" | "capture">, env: Env): Env {
+  if (s.mode !== "chat") return env;
+  return {
+    ...env,
+    derived: { declaredValue: !s.overrides.declaredValue, cartons: !s.overrides.cartons },
+    confirmed: s.confirmed,
+    pendingFields: s.capture?.pendingFields ?? [],
+    capture: s.capture?.missing ?? [],
+  };
+}
+
+/** Re-run validation without logging (e.g. weights or hazard hints changed). */
+export function revalidate(s: Session, env: Env): Session {
+  return { ...s, result: validateBooking(s.booking, envFor(s, env)) };
 }
 
 export type EditPath =
@@ -61,9 +87,9 @@ export function recompute(b: Booking, s: Pick<Session, "overrides" | "sellerCart
 }
 
 export function newSession(mode: Session["mode"], booking: Booking, env: Env): Session {
-  const base = { mode, overrides: { cartons: false, declaredValue: false }, sellerCartons: [] as string[] };
+  const base = { mode, overrides: { cartons: false, declaredValue: false }, sellerCartons: [] as string[], confirmed: [] as string[], capture: null };
   const b = recompute(booking, base);
-  return { ...base, booking: b, log: [], result: validateBooking(b, env) };
+  return { ...base, booking: b, log: [], result: validateBooking(b, envFor(base, env)) };
 }
 
 function setField(b: Booking, e: Edit): FieldChange | null {
@@ -92,7 +118,7 @@ function setField(b: Booking, e: Edit): FieldChange | null {
  * Applies edits, re-validates and (when `log` is true) appends a change-log entry built
  * from exactly what changed. Seller overrides always win; the rules then check them.
  */
-export function applyEdits(s: Session, edits: Edit[], source: ChangeLogEntry["source"], env: Env, stamp: string, log = true): { session: Session; changes: FieldChange[] } {
+export function applyEdits(s: Session, edits: Edit[], source: ChangeLogEntry["source"], env: Env, stamp: string, log = true, extra?: { confirmed?: string[]; captureOf?: (b: Booking) => Capture | null }): { session: Session; changes: FieldChange[] } {
   const b = clone(s.booking);
   const changes: FieldChange[] = [];
   const overrides = { ...s.overrides };
@@ -118,9 +144,11 @@ export function applyEdits(s: Session, edits: Edit[], source: ChangeLogEntry["so
       if (before && before.cartons !== it.cartons && !changes.some((c) => c.label === `${it.sku} cartons`)) changes.push({ label: `${it.sku} cartons (calculated)`, from: before.cartons, to: it.cartons });
     }
   }
-  const result = validateBooking(next, env);
+  const confirmed = extra?.confirmed ?? s.confirmed;
+  const capture = extra?.captureOf ? extra.captureOf(next) : s.capture;
+  const result = validateBooking(next, envFor({ mode: s.mode, overrides, confirmed, capture }, env));
   const entry: ChangeLogEntry | null = log && changes.length
     ? { at: stamp, source, lines: diffLines(s.result, result, changes), verdictFrom: s.result.verdict, verdictTo: result.verdict }
     : null;
-  return { session: { ...s, booking: next, overrides, sellerCartons, result, log: entry ? [...s.log, entry] : s.log }, changes };
+  return { session: { ...s, booking: next, overrides, sellerCartons, confirmed, capture, result, log: entry ? [...s.log, entry] : s.log }, changes };
 }

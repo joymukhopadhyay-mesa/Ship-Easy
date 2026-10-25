@@ -29,6 +29,8 @@ export interface RuleCtx {
   sums: { value: number; cartons: number; goodsWeight: number };
   carrier: CarrierResult;
   hazards: Record<string, HazardInfo>;
+  /** Chat fields not asked yet ("hsCode@<rowId>"). */
+  pendingFields: Set<string>;
 }
 
 const has = (n: number | null | undefined): n is number => typeof n === "number" && Number.isFinite(n);
@@ -65,5 +67,6 @@ export function buildContext(booking: Booking, env: Env): RuleCtx {
     },
     carrier: evaluateCarriers(booking, env.weights ?? DEFAULT_WEIGHTS),
     hazards,
+    pendingFields: new Set(env.pendingFields ?? []),
   };
 }

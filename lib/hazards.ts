@@ -25,6 +25,7 @@ export const IMPLIED_PRODUCTS: { re: RegExp; label: string }[] = [
   { re: /\b(?:power\s?bank|portable charger|battery pack)s?\b/i, label: "power bank (lithium battery)" },
   { re: /\b(?:smart\s?watch|fitness tracker|smart\s?phone|mobile phone|laptop|tablet|e-?reader|drone|e-?bike|e-?scooter|hoverboard|vape|e-?cig(?:arette)?s?)\b/i, label: "electronic device (lithium battery)" },
   { re: /\bbatter(?:y|ies)\b/i, label: "battery (may be lithium)" },
+  { re: /\b(?:phone |mobile |usb |wireless |travel )?chargers?\b/i, label: "charger (may contain a lithium battery pack)" },
   { re: /\bnail\s+(?:polish|varnish|lacquer)(?:\s+remover)?\b/i, label: "nail polish (flammable liquid)" },
   { re: /\bhand\s+saniti[sz]er\b/i, label: "hand sanitiser (flammable, alcohol-based)" },
   { re: /\b(?:perfume|eau de (?:parfum|toilette)|cologne|fragrance spray|body spray)\b/i, label: "perfume (flammable liquid)" },

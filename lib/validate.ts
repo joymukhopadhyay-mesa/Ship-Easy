@@ -41,7 +41,9 @@ export function dataGate(b: Booking, lane: string | null): GateNote[] {
   return g;
 }
 
-export function verdictOf(rules: RuleResult[], gate: GateNote[]): Verdict {
+export function verdictOf(rules: RuleResult[], gate: GateNote[], capturing = false): Verdict {
+  // Chat still collecting details: the booking isn't finished, so it can't be judged yet (Reds still listed).
+  if (capturing) return "INCOMPLETE";
   if (rules.some((r) => r.severity === "Red" && r.status === "fail")) return "BLOCKED";
   if (gate.some((n) => n.code !== "D-03") || rules.some((r) => r.status === "not_checked" || r.status === "cannot_compute")) return "INCOMPLETE";
   if (rules.some((r) => r.severity === "Amber" && r.status === "fail")) return "SHIP WITH CARE";
@@ -113,13 +115,16 @@ export function validateWorkbook(parsed: ParsedWorkbook, env: Env): WorkbookResu
 
 export function validateBooking(booking: Booking, env: Env): BookingResult {
   const ctx = buildContext(booking, env);
-  const gate = dataGate(booking, ctx.carrier.lane);
+  const capturing = (env.capture?.length ?? 0) > 0;
+  const gate = capturing
+    ? [{ code: "D-02" as const, message: `Still collecting in chat: ${env.capture!.join(", ")}. The verdict is shown once these are answered.` }]
+    : dataGate(booking, ctx.carrier.lane);
   const rules = runRules(ctx);
   return {
     booking,
     gate,
     rules,
-    verdict: verdictOf(rules, gate),
+    verdict: verdictOf(rules, gate, capturing),
     carrier: ctx.carrier,
     repairs: computeRepairs(booking, env, rules, ctx),
     fyi: fyiNotes(booking, ctx.carrier.priorityAssumed),

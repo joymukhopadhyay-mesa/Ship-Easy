@@ -108,20 +108,30 @@ export function carrierReason(c: CarrierResult): { reason: string; runnerUp: str
 export function confirmation(res: BookingResult): string {
   const b = res.booking;
   const c = res.carrier;
-  const items = b.items.map((i) => `${fmtNum(i.quantity)} × ${i.description || i.sku}`).join(", ") || "no items yet";
-  const dest = `${b.destinationType === "Warehouse" ? "the warehouse" : b.destinationType === "Business address" ? "the business address" : "the destination"} in ${b.destinationCity ?? "?"}${c.lane ? `, ${c.lane}` : ""}`;
+  const items = b.items.map((i) => `${i.quantity != null ? fmtNum(i.quantity) + " × " : ""}${i.description || i.sku}`).join(", ") || "no items yet";
+  const dest = `${b.destinationType === "Warehouse" ? "the warehouse" : b.destinationType === "Business address" ? "the business address" : "the destination"} in ${b.destinationCity ?? "(destination not given yet)"}${c.lane ? `, ${c.lane}` : ""}`;
+  // only numbers we actually have; missing ones are named, never shown as 0
+  const facts = [
+    b.cartons != null ? plural(b.cartons, "carton") : null,
+    b.pallets ? plural(b.pallets, "pallet") : null,
+    b.grossWeight != null ? `${kg(b.grossWeight)} gross` : null,
+    b.declaredValue != null ? `declared ${gbp(b.declaredValue)}` : null,
+  ].filter(Boolean);
+  const missing = [b.cartons == null ? "cartons" : null, !b.pallets ? "pallets" : null, b.grossWeight == null ? "gross weight" : null, b.declaredValue == null ? "declared value" : null].filter(Boolean) as string[];
   const chosen = opt(c, c.chosen);
   const parts = [
-    `You're sending ${items} (${plural(b.cartons ?? 0, "carton")} on ${plural(b.pallets ?? 0, "pallet")}, ${kg(b.grossWeight)} gross, declared ${gbp(b.declaredValue)}) from ${b.originCity ?? "the UK"} to ${dest}.`,
+    `You're sending ${items}${facts.length ? ` (${facts.join(", ")})` : ""} from ${b.originCity ?? "the UK"} to ${dest}.`,
+    missing.length ? `Still to confirm: ${missing.join(", ")}.` : "",
     b.readyDate ? `Goods are ready on ${prettyDate(b.readyDate)}.` : "",
-    chosen && c.dates.collection
-      ? `${chosen.name} (${chosen.service}) collects on ${prettyDate(c.dates.collection)} and should deliver by ${prettyDate(c.dates.eta)}, for ${gbp(chosen.totalCost)}.`
-      : "No carrier can be booked yet.",
   ];
   const reds = res.rules.filter((r) => r.status === "fail" && r.severity === "Red").map((r) => r.id);
   const ambers = res.rules.filter((r) => r.status === "fail" && r.severity === "Amber").map((r) => r.id);
-  if (reds.length) parts.push(`It can't ship until ${reds.join(", ")} ${reds.length === 1 ? "is" : "are"} fixed.`);
-  else if (res.verdict === "INCOMPLETE") parts.push("Some details are still missing before every check can run.");
+  if (chosen && c.dates.collection) {
+    const plan = `${chosen.name} (${chosen.service}) for ${gbp(chosen.totalCost)}: collection ${prettyDate(c.dates.collection)}, delivery by ${prettyDate(c.dates.eta)}`;
+    parts.push(res.verdict === "BLOCKED" || res.verdict === "INCOMPLETE" ? `Planned carrier once it's cleared: ${plan}.` : `${plan}.`);
+  } else parts.push("No carrier can be booked yet.");
+  if (res.verdict === "INCOMPLETE") parts.push(reds.length ? `Some details are still missing, and ${reds.join(", ")} already fails, so it can't ship yet.` : "Some details are still missing before every check can run.");
+  else if (reds.length) parts.push(`It can't ship until ${reds.join(", ")} ${reds.length === 1 ? "is" : "are"} fixed.`);
   else if (ambers.length) parts.push(`It can ship, but check ${ambers.join(", ")} first.`);
   else parts.push("Everything checks out.");
   return parts.filter(Boolean).join(" ");
@@ -141,7 +151,12 @@ export function nextSteps(res: BookingResult): { text: string; done: boolean }[]
   steps.push({ text: "Prepare the commercial invoice (HS code, quantity, unit price, country of origin per line) and a packing list; have your EORI number ready.", done: false });
   steps.push({ text: `Label every carton with the booking ID${b.bookingId ? ` (${b.bookingId})` : ""}, the SKU and "carton n of ${b.cartons ?? "N"}".`, done: false });
   const chosen = opt(c, c.chosen);
-  if (chosen && c.dates.collection) steps.push({ text: `${chosen.name} collects ${plural(b.pallets ?? 0, "pallet")} on ${prettyDate(c.dates.collection)}; expected delivery ${prettyDate(c.dates.eta)}.`, done: false });
+  if (chosen && c.dates.collection && b.pallets) {
+    const pickup = `${chosen.name} can collect ${plural(b.pallets, "pallet")} on ${prettyDate(c.dates.collection)}; expected delivery ${prettyDate(c.dates.eta)}.`;
+    // never promise a collection while the booking is blocked or unfinished
+    const text = res.verdict === "BLOCKED" ? `Once the Red findings are fixed, ${pickup}` : res.verdict === "INCOMPLETE" ? `Once the missing details are in, ${pickup}` : pickup.replace("can collect", "collects");
+    steps.push({ text, done: false });
+  }
   return steps;
 }
 

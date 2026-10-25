@@ -7,7 +7,7 @@ import { carrierReason, VERDICT_TEXT } from "./explain";
 import { fmtNum, gbp, kg } from "./format";
 import type { Slot } from "./localExtract";
 import { sanitisePatch, type Patch, type Rejection } from "./patch";
-import { applyEdits, newSession, type Edit, type Session } from "./session";
+import { applyEdits, newSession, revalidate, type Capture, type Edit, type Session } from "./session";
 import type { Booking, CarrierId, DestinationType, Env, Item, Priority } from "./types";
 
 export interface NonDivisible {
@@ -45,7 +45,9 @@ export function emptyChatBooking(): Booking {
 }
 
 export function newChat(env: Env): ChatState {
-  return { session: newSession("chat", emptyChatBooking(), env), baselined: false, pending: null, declined: [], expecting: [], nextRow: 1, turns: 0 };
+  const s0 = newSession("chat", emptyChatBooking(), env);
+  const session = revalidate({ ...s0, capture: captureFor(s0.booking, []) }, env);
+  return { session, baselined: false, pending: null, declined: [], expecting: [], nextRow: 1, turns: 0 };
 }
 
 const skuFor = (desc: string, n: number) => {
@@ -80,9 +82,8 @@ const ITEM_Q: Record<string, (d: string) => string> = {
   countryOfOrigin: () => "Where were they made? (UK, China, India, Vietnam, Turkey or Germany)",
 };
 
-/** Missing slots in group order; the first incomplete group is asked, max 3 questions. */
-export function nextQuestions(st: ChatState): { slots: Slot[]; text: string[] } {
-  const b = st.session.booking;
+/** Missing slots in group order. allItems=false stops at the first incomplete item (one item at a time). */
+function slotGroups(b: Booking, declined: string[], allItems: boolean): [Slot, string][][] {
   const g1: [Slot, string][] = [];
   if (!b.destinationCity) g1.push([{ field: "destinationCity" }, "Where is it going? (Berlin, Frankfurt, Hamburg, Paris, Lyon, Amsterdam or Rotterdam)"]);
   if (!b.originCity) g1.push([{ field: "originCity" }, "Where do we collect from? (London, Manchester, Birmingham or Leeds)"]);
@@ -92,12 +93,12 @@ export function nextQuestions(st: ChatState): { slots: Slot[]; text: string[] } 
   if (!b.items.length) g2.push([{ field: "items" }, "What are you shipping? For example: \"1,080 ceramic mugs at £5 each, 12 per carton, 0.5 kg each\"."]);
   for (const it of b.items) {
     const fields = (["quantity", "unitPrice", "unitsPerCarton", "unitWeight", "hsCode", "countryOfOrigin"] as const).filter((f) => {
-      if (st.declined.includes(`${f}@${it.rowId}`)) return false;
+      if (declined.includes(`${f}@${it.rowId}`)) return false;
       return it[f] == null || it[f] === "";
     });
     if (fields.length) {
       fields.forEach((f, k) => g2.push([{ field: f, rowId: it.rowId, sku: it.sku }, `${k === 0 ? `For the ${it.description || it.sku}: ` : ""}${ITEM_Q[f](it.description || it.sku)}`]));
-      break; // one item at a time
+      if (!allItems) break; // one item at a time
     }
   }
   const g3: [Slot, string][] = [];
@@ -109,9 +110,30 @@ export function nextQuestions(st: ChatState): { slots: Slot[]; text: string[] } 
   const g4: [Slot, string][] = [];
   if (!b.priority) g4.push([{ field: "priority" }, "What matters most: cheapest, fastest, most reliable, or a balance of all three?"]);
   if (b.destinationType === "Warehouse" && b.appointmentBooked == null) g4.push([{ field: "appointmentBooked" }, "Have you booked a delivery appointment with the warehouse?"]);
-  const group = [g1, g2, g3, g4].find((g) => g.length) ?? [];
+  return [g1, g2, g3, g4];
+}
+
+/** Missing slots in group order; the first incomplete group is asked, max 3 questions. */
+export function nextQuestions(st: ChatState): { slots: Slot[]; text: string[] } {
+  const group = slotGroups(st.session.booking, st.declined, false).find((g) => g.length) ?? [];
   const pick = group.slice(0, 3);
   return { slots: pick.map((p) => p[0]), text: pick.map((p) => p[1]) };
+}
+
+const SLOT_LABEL: Record<string, string> = {
+  destinationCity: "destination", originCity: "collection city", readyDate: "ready date", destinationType: "destination type",
+  items: "what you're shipping", quantity: "quantity", unitPrice: "unit price", unitsPerCarton: "units per carton", unitWeight: "unit weight",
+  hsCode: "HS code", countryOfOrigin: "country of origin", grossWeight: "gross weight", pallets: "pallets", priority: "priority",
+  appointmentBooked: "delivery appointment",
+};
+
+/** What the chat is still collecting. While anything is missing the verdict stays INCOMPLETE. */
+export function captureFor(b: Booking, declined: string[]): Capture | null {
+  const slots = slotGroups(b, declined, true).flat().map((x) => x[0]);
+  const missing = slots.map((x) => (x.sku ? `${x.sku} ${SLOT_LABEL[x.field]}` : SLOT_LABEL[x.field]));
+  for (const it of b.items) if (it.quantity != null && it.unitsPerCarton && it.cartons == null) missing.push(`${it.sku} carton count`);
+  if (!missing.length) return null;
+  return { missing, pendingFields: slots.filter((x) => x.field === "hsCode" || x.field === "countryOfOrigin").map((x) => `${x.field}@${x.rowId}`) };
 }
 
 const num = (v: unknown): number | null => {
@@ -237,21 +259,22 @@ export function chatTurn(st0: ChatState, rawPatch: Patch, message: string, env: 
         b.items.push(second);
       }
       const s1 = { ...st.session, booking: b };
-      const { session } = applyEdits(s1, edits, "chat", env, stamp, st.baselined);
+      const { session } = applyEdits(s1, edits, "chat", env, stamp, true, { captureOf: (bk) => captureFor(bk, st.declined) });
       st = { ...st, session, pending: null, nextRow };
       notes.push(`Going with (${opt.key}): ${opt.label}.`);
     }
   }
 
+  let stuck = false;
   const conv = patchToEdits(st, patch);
   notes.push(...conv.notes);
   const s1 = { ...st.session, booking: conv.booking };
   const before = st.session;
-  const { session, changes } = applyEdits(s1, conv.edits, "chat", env, stamp, st.baselined);
+  const { session, changes } = applyEdits(s1, conv.edits, "chat", env, stamp, true, { captureOf: (bk) => captureFor(bk, conv.declined) });
   st = { ...st, session, nextRow: conv.nextRow, declined: conv.declined };
   const added = session.booking.items.length - before.booking.items.length;
   // if items were added/removed, the change log entry still needs a line for it
-  if (st.baselined && added !== 0 && st.session.log.length === before.log.length) {
+  if (added !== 0 && st.session.log.length === before.log.length) {
     const entry = { at: stamp, source: "chat" as const, lines: [`Items ${before.booking.items.length} -> ${session.booking.items.length}`], verdictFrom: before.result.verdict, verdictTo: session.result.verdict };
     st = { ...st, session: { ...st.session, log: [...st.session.log, entry] } };
   }
@@ -265,7 +288,16 @@ export function chatTurn(st0: ChatState, rawPatch: Patch, message: string, env: 
     }
   } else {
     const it = st.session.booking.items.find((i) => i.rowId === st.pending!.rowId);
-    if (!it || !nonDivisibleOptions(it)) st = { ...st, pending: null };
+    if (it && st.session.sellerCartons.includes(it.rowId) && it.cartons != null) {
+      // The seller insisted on their own numbers: keep them, mark them confirmed, let the rules speak.
+      const confirmed = [...new Set([...st.session.confirmed, `item.quantity@${it.rowId}`, `item.cartons@${it.rowId}`])];
+      st = { ...st, pending: null, session: revalidate({ ...st.session, confirmed }, env) };
+      const packed = it.unitsPerCarton! * it.cartons;
+      notes.push(packed === it.quantity
+        ? `Keeping ${fmtNum(it.quantity)} units in ${fmtNum(it.cartons)} cartons as you said.`
+        : `Keeping ${fmtNum(it.quantity)} units in ${fmtNum(it.cartons)} cartons as you said. At ${it.unitsPerCarton} per carton, ${fmtNum(it.cartons)} cartons hold ${fmtNum(packed)}, not ${fmtNum(it.quantity)}, so that breaks R-03 — see the card.`);
+    } else if (!it || !nonDivisibleOptions(it)) st = { ...st, pending: null };
+    else if (changes.length === 0 && st0.pending?.rowId === it.rowId) stuck = true;
   }
 
   const b = st.session.booking;
@@ -290,7 +322,10 @@ export function chatTurn(st0: ChatState, rawPatch: Patch, message: string, env: 
   if (st.pending) {
     const nd = st.pending;
     st = { ...st, expecting: [{ field: "choice", rowId: nd.rowId, sku: nd.sku }] };
-    reply = [...notes, nonDivisiblePrompt(nd)].join(" ");
+    const desc = b.items.find((i) => i.rowId === nd.rowId)?.description ?? nd.sku;
+    reply = stuck
+      ? [...notes, `I still need to know how the ${fmtNum(nd.quantity)} ${desc} are packed before I can work out the cartons: reply (a), (b) or (c), or tell me the real carton count (for example "90 cartons").`].join(" ")
+      : [...notes, nonDivisiblePrompt(nd)].join(" ");
   } else {
     const q = nextQuestions(st);
     st = { ...st, expecting: q.slots };
@@ -314,7 +349,7 @@ export function chatTurn(st0: ChatState, rawPatch: Patch, message: string, env: 
 
 /** Card edits / Apply / seller actions in a chat booking, logged like any other change. */
 export function chatEdit(st: ChatState, edits: Edit[], source: "apply" | "edit" | "action" | "declaration", env: Env, stamp: string): ChatState {
-  const { session } = applyEdits(st.session, edits, source, env, stamp, true);
+  const { session } = applyEdits(st.session, edits, source, env, stamp, true, { captureOf: (bk) => captureFor(bk, st.declined) });
   let next: ChatState = { ...st, session };
   if (st.pending) {
     const it = session.booking.items.find((i) => i.rowId === st.pending!.rowId);
