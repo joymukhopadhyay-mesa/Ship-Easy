@@ -44,3 +44,56 @@ Build date: 25-10-2026 (Europe/London). Builder: Claude Code (single agent).
 - C-1 (key / provider): the prompt says to use a *Gemini* key with the *official Gemini SDK*. The key supplied is an **OpenRouter** key (`sk-or-v1-…`), sent with instructions to call Google models *only through OpenRouter* (`https://openrouter.ai/api/v1/chat/completions`, `google/*` models, `provider.only = [google-vertex, google-ai-studio]`, `allow_fallbacks:false`). That key cannot work with the Google SDK. **Resolution:** the server calls OpenRouter with plain `fetch` (no new dependency; Google models only, provider-pinned). The env var is `OPENROUTER_API_KEY` (as the OpenRouter instructions require) instead of `GEMINI_API_KEY`. `GEMINI_MODEL` / `GEMINI_FALLBACK_MODEL` are kept as the model switches. The official Gemini SDK is **not** installed.
 - C-2: the pasted build prompt is cut off mid-sentence inside Phase 4 ("…invoice draft with"). Phases 5+ are not visible. I follow the PDF's Part B for what comes next (Gemini layer, then deploy/harden) and log it here.
 - C-3: the template uses full country names ("United Kingdom", not "UK"). The engine treats "UK"/"United Kingdom" as the same and writes "United Kingdom" into exports.
+
+**Commit:** `3d8aadd phase 0A: add spec, template and UI reference`, pushed to `origin/main`.
+
+---
+
+## Phase 0 — Setup
+
+**Architecture summary (from docs/SPEC.pdf Part A2 and this build prompt)**
+
+```
+Browser (Next.js 14 App Router + TypeScript + Tailwind)
+ ├─ SheetJS parses .xlsx locally (nothing uploaded)
+ ├─ /lib  (pure, unit-tested, zero network; "today" is injected)
+ │    config.ts     allowed values, cities→country, tolerances, Balanced default weights
+ │    rulebook.ts   R-01..R-10 as {id, severity, text, check(ctx)}   ← only place with rule logic
+ │    trust.ts      mutable vs trusted field registry
+ │    validate.ts   D-gate → rules → verdict
+ │    repair.ts     Stage 1 single-field → Stage 2 bounded pair → Stage 3 honest fallback
+ │    carrier.ts    lane filter, feasibility, 4 ranking modes, Balanced, R-05 states, dates
+ │    parse.ts      header-by-name workbook parser + reconciliation line
+ │    explain.ts    templated plain-English text (Local-only voice)
+ │    chat.ts       deterministic booking state machine: merge PATCH, infer, compute, ask ≤3 questions
+ │    localExtract.ts  regex extractor that emits the same PATCH shape (Local-only chat)
+ │    hazards.ts    R-06 explicit keywords + built-in implied-hazard product list
+ ├─ data/carriers.json  (equals template Sheet 3; asserted by a test)
+ └─ server routes (hold the key; size limit, message limit, per-IP rate limit)
+      /api/chat     → PATCH only (source-checked, allow-listed, merged in code)
+      /api/explain  → one batched call per upload, narrative only
+      /api/hazard   → R-06 implied classifier, output constrained to explicit/implied/none
+   Fallback: Local-only mode (toggle and automatic on 429 / timeout / missing key / bad output)
+```
+
+**Ambiguities found and the conservative choice made (no stop needed)**
+
+- A-1 **Verdict precedence.** The spec lists BLOCKED / SHIP WITH CARE / CLEAR / INCOMPLETE but does not say what wins when a gate D-code and a Red both apply. Choice: **Red > Incomplete > Amber > Clear.** A definite Red must never be hidden behind "incomplete". Incomplete beats Amber because unchecked rules mean we cannot claim "Ambers only".
+- A-2 **Which D-codes make a booking INCOMPLETE:** D-01, D-02, D-05, D-06 (some checks could not run). D-04 (duplicate ID): both bookings are shown and flagged. Items carrying that ID are attached to both, and both are INCOMPLETE because the items cannot be attributed reliably. D-03 orphans are listed under Unmatched.
+- A-3 **"Clears every failing rule" (repair Stage 1).** Taken literally, a booking with an R-01 error plus an R-03 error could never get a single-field fix, although no field is shared between them. Choice: the repair search runs over the connected numeric identity cluster **R-02, R-03, R-04, R-07** (rules that share mutable fields). R-01 (hs_code only) and R-05 (pallets, handled by the carrier engine's `ceil(gross/cap)` suggestions) are repaired separately. A candidate is accepted only if it clears every failing rule in the cluster **and breaks no passing rule anywhere** (R-05 included), so the invariant "no suggested value fails a rule" holds by construction.
+- A-4 **Confidence for Stage 2 pairs.** The same High test as single fields: unique accepted pair, every alternative breaks a passing rule, integer for counts. Two accepted pairs → Ambiguous (show both, apply neither). Any gross-weight involvement → never High.
+- A-5 **Seller override in files.** The template has no "chosen carrier" column. The parser recognises an optional extra column `Chosen carrier` (by name). Fixture 20 uses it, and the UI has a carrier picker. Without it, the chosen carrier is the recommended one.
+- A-6 **R-06-I declaration.** The one-click declaration means "I confirm this item contains no lithium battery, aerosol or flammable liquid". Before it is clicked the item is Red "Blocked pending seller confirmation". After it, the rule passes for that item and the audit line "Confirmed by seller, DD-MM-YYYY HH:mm (Europe/London)" is shown. It never becomes Amber and never names a person.
+- A-7 **Reconciliation accounting.** Rows read = every non-blank data row on Bookings + Items (header and grey example excluded). Each row lands in exactly one bucket: *validated*, *incomplete* (its own data is missing/quarantined: D-01/D-02/D-05/D-06), *unmatched* (D-03), or *duplicate* (D-04 booking rows). The buckets always sum to rows read, and a test asserts it.
+- A-8 **Chat must work without the model.** "If Gemini is unavailable the app must still work fully" applies to Part 1 too, so a deterministic regex extractor (`localExtract.ts`) produces the same PATCH shape with source phrases. The model path and the local path share the same merge, source check and allow-list.
+- A-9 **Seller name / Booking ID in chat.** They are not in the four question groups. The Booking ID is generated (`CHAT-001`). The seller name is optional ("Not given" until stated) and never blocks completion.
+- A-10 **Unknown route values / blank priority in a file.** If the destination city/country can't be resolved, R-05 is "cannot compute" (like D-05) and no carrier is recommended. A blank priority falls back to Balanced and an "FYI, not a rule" note says so.
+- A-11 **HS code digits.** Digits are counted after stripping a trailing ".0", dots and spaces ("6912.00" → 691200 → 6 digits). Any other non-digit character makes the code invalid (R-01 Red).
+
+**Setup done**
+
+- Manual scaffold (the repo already had files, so `create-next-app` was not used): Next.js 14.2.35, React 18.3, TypeScript 5.9, Tailwind 3.4, SheetJS 0.20.3 (from the official SheetJS CDN tarball; the npm `xlsx@0.18.5` has known advisories), Zod 3, Vitest 2.
+- `.env.example` (placeholders only), `CLAUDE.md` (standing rules), Tailwind tokens from the UI reference, placeholder page.
+- The oracle script runs on Node 26's native TypeScript type stripping (`node --experimental-strip-types`), so no `tsx` dependency is needed.
+
+**Gate 0:** PASS. `npm run build` → `✓ Compiled successfully` (routes `/`, `/_not-found`). `npm test` → `Test Files 1 passed, Tests 1 passed`. `git status --ignored` → `!! .env.local` (untracked and ignored), `.env.example` tracked.
