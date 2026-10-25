@@ -205,3 +205,40 @@ $ npx tsc --noEmit    → clean
 | 50 bookings | `150 rows read, 150 validated, 0 unmatched, 0 incomplete` (86 ms) |
 
 **Gate 3:** PASS.
+
+**Commit:** `cb4aac9 phase 3: …`, pushed.
+
+---
+
+## Phase 4 — UI (no AI yet)
+
+The build prompt is cut off inside this phase ("…invoice draft with"). I built everything the visible text and the PDF's Phase 3 list ask for.
+
+**Deterministic chat engine (needed so Part 1 works with zero model calls)**
+- `lib/patch.ts`: the PATCH schema (Zod) and `sanitisePatch`, which applies the **allow-list** (seller-supplied fields only; countries, currency, declared value and booking cartons are code-only) and the **source check** (each value's phrase must occur in the LATEST message, case- and whitespace-insensitive).
+- `lib/localExtract.ts`: a regex extractor that emits the same PATCH with exact source phrases. It reads cities, destination type words, absolute and relative dates, priority words, absolute and relative pallets ("add another pallet" → `"+1"`), gross vs unit weight ("each/per" decides), appointment yes/no, items "N <description>" with per-segment price / units per carton / cartons / unit weight / HS / origin, a carrier pick, bare answers to the single question just asked, multiple-choice "(b)", and "don't know" for HS/origin.
+- `lib/session.ts`: one booking being worked on (chat or file). It applies edits, recomputes chat-derived fields (origin UK, GBP, country from city; item cartons **only if divisible**; booking cartons and declared value as sums unless the seller typed their own), re-validates, and appends a timestamped change-log entry built from exactly what changed.
+- `lib/chat.ts`: the turn engine. Non-divisible quantities are raised **before** computing cartons, with the exact (a)/(b)/(c) options. It asks at most 3 questions per turn from the first incomplete group (route & timing → items, one item at a time → packing & weight → priority & appointment). It confirms relative dates and shows computed values with their arithmetic, plus a hazard heads-up. Before the first complete booking, turns fill the card silently. After that, every change is logged (A-12 below).
+- A-12 Change-log entries start once the chat booking first becomes complete (the baseline). Card edits, Apply, seller actions and declarations are always logged. Logging every field fill while the seller is still describing would bury the before → after diff the judges look for.
+- A-13 "next Tuesday" means the first Tuesday after today (Sun 25 Oct → Tue 27 Oct), and the bot always confirms the absolute date.
+- A-14 **Invoice draft count.** The prompt lists 6 missing groups (buyer name/address, EORI/VAT, invoice number/date, incoterms, payment terms, signature) but says "8 of 13", and 8 + 6 = 14. I merged "incoterms and payment terms" into one field: 8 populated (exporter, ship from, ship to, descriptions, HS per line, quantity per line, unit price & total value, origin per line) + 5 missing = 13. The count is computed, so it drops if, say, HS codes are missing.
+
+**UI** (`components/App.tsx`, `BookingCard.tsx`, `Panels.tsx`, `ui.tsx`; styled after `docs/ui-reference`: light canvas, white `rounded-card` cards, black pill nav and active state, KPI row with round icon chips, tracking-style date timeline, and before → after chips modelled on the video's "Approve route change?" panel)
+- Chat pane and Booking Card side by side (stacked on mobile; no horizontal scroll at 375 px, verified). Filled fields are solid, missing ones dashed-outlined, and every field is click-to-edit.
+- One-click examples: Demo 1, Demo 2, casual with gaps, 1,000 mugs at 12 per carton, wireless earbuds. There's a "+ add another pallet" chip and a card button "+ Add a pallet".
+- Booking Card: verdict badge, change-log strip above the fold (latest diff as chips, verdict from → to, append-only history), KPI row, details and items, findings (D-codes first, then rule ID, severity, problem, numbers, caveat, why it matters, repair with confidence chip, arithmetic and an Apply button enabled only for High; seller actions; the R-06-I declaration button), passed checks collapsed, "FYI, not a rule". Then the carrier panel (recommended or override, reason, runner-up trade-off, exclusions, Ready → Collection → ETA, all-options table, three weight sliders, normalised score table, carrier picker), confirmation, next steps, downloads (corrected .xlsx, report .html) and the invoice draft.
+- Upload: drop zone / file picker (10 MB cap), **Load sample file** (`public/sample-bookings.xlsx`, built by `scripts/make-sample.mjs` with 11 bookings, planted mistakes and 1 orphan), a blank template download, the reconciliation line, a booking list with verdict badges and rule codes, an Unmatched (D-03) section, and parser notes.
+- Assumptions panel, Privacy panel (the exact statement plus "Show what was sent", empty in Local-only), and the Local-only toggle (no model exists yet, so the app makes zero model calls either way).
+- "today" = `londonToday(new Date())` read once on the client and injected.
+
+**Browser verification (dev server, built-in browser)**
+- Demo 1 chip, then "+ add another pallet": log `Pallets 2 → 3 | Weight/pallet 800 → 533 kg | R-05 Red (no carrier fits) → Pass | Carrier none → B (3d, GBP 660)`, BLOCKED → CLEAR TO SHIP, ETA Thu 5 Nov 2026.
+- Demo 2 chip, then the card's "+ Add a pallet": `Pallets 3 → 4 | Weight/pallet 420 → 315 kg | No checks changed | Carrier B (3d, GBP 660) → C (2d, GBP 1,360) +GBP 700, 1 day faster`. Score table B 0.35 / C 0.40 / A 0.60.
+- Load sample file: `23 rows read, 20 validated, 1 unmatched, 2 incomplete`, BK-999 under Unmatched. BK-102 Apply fix (Stage 2 High) → `Declared value (GBP) 5,600 → 5,400 | MUG-01 quantity 1,000 → 1,080 | R-02 Red → Pass | R-03 Red → Pass`. BK-105 declaration → `EAR-01 hazard declaration none → Confirmed by seller, 25-10-2026 18:15 (Europe/London) | R-06 Red (pending confirmation) → Pass`. BK-104 (Stage 3): every Apply button disabled.
+- Console: no errors after the full flow. An early "destroy is not a function" came from an arrow-expression `useEffect`; all effects are now block bodies, and I re-checked after a reload.
+
+**Tests added:** `tests/chat.test.ts` (15: all three chat scripts, the invariant on options, (c) two lines, a Part-1-style multi-turn flow ending in the Demo 1 flip, "don't know", source check, allow-list, a malicious patch that can't touch unmentioned fields, relative dates) and `tests/exports.test.ts` (4: sample file verdicts and reconciliation; the corrected .xlsx round-trips through the parser with the applied fix; the report contents; the invoice draft "8 of 13").
+
+**Gate 4 evidence:** `npx vitest run` → **5 files, 135 tests passed, 0 skipped**; `npx tsc --noEmit` clean; `npm run build` → `✓ Compiled successfully`, `/` static.
+
+**Gate 4:** PASS (the gate text itself was cut off; I used the PDF's: "the whole app works end to end with zero model calls, including Demo 1 and Demo 2 with a visible change log").
