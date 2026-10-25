@@ -1,0 +1,55 @@
+{
+  "source": "docs/template.xlsx, sheet Rulebook (FIXED - the only rules judges test against)",
+  "rules": [
+    {
+      "id": "R-01",
+      "text": "Every item must have an HS code of at least 6 digits",
+      "severity": "Red"
+    },
+    {
+      "id": "R-02",
+      "text": "Total declared value must equal the sum of quantity × unit price across all items (within 1%)",
+      "severity": "Red"
+    },
+    {
+      "id": "R-03",
+      "text": "For each item, units per carton × cartons must equal quantity",
+      "severity": "Red"
+    },
+    {
+      "id": "R-04",
+      "text": "Total cartons on the booking must equal the sum of cartons across all items",
+      "severity": "Red"
+    },
+    {
+      "id": "R-05",
+      "text": "Weight per pallet (total gross weight ÷ pallets) must not exceed the chosen carrier's max weight per pallet",
+      "severity": "Red"
+    },
+    {
+      "id": "R-06",
+      "text": "No lithium batteries, aerosols or flammable liquids",
+      "severity": "Red"
+    },
+    {
+      "id": "R-07",
+      "text": "Total gross weight must be at least the sum of unit weight × quantity across all items",
+      "severity": "Amber"
+    },
+    {
+      "id": "R-08",
+      "text": "Shipments to a warehouse must have a delivery appointment booked",
+      "severity": "Amber"
+    },
+    {
+      "id": "R-09",
+      "text": "Every item must have a country of origin",
+      "severity": "Amber"
+    },
+    {
+      "id": "R-10",
+      "text": "Ready to ship date must not be in the past",
+      "severity": "Amber"
+    }
+  ]
+}

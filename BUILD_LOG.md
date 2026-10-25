@@ -133,3 +133,41 @@ oracle: expected.json agrees on every fixture
 - Demo 1 (800 kg → none; 533 → B £660; 400 → A, B, C), Demo 2 (420 → A, B → B £660; 315 → C £1,360), weekend (Sat 7 Nov → Mon 9 Nov → A Mon 16 Nov), Thursday (5 Nov → A Tue 10 Nov) and Balanced (A 0.60 / B 0.35 / C 0.40 → B) all match the prompt.
 
 **Gate 1:** PASS.
+
+**Commit:** `314dfdc phase 1: …`, pushed.
+
+---
+
+## Phase 2 — Engine (pure functions, zero network)
+
+**Modules:** `lib/types.ts`, `config.ts` (allowed values and constants), `dates.ts` (pure calendar maths; `londonToday(now)` exists only for the app/API to produce the injected date), `carrier.ts`, `hazards.ts`, `trust.ts`, `context.ts` (sums/carrier/hazards, no pass/fail decisions), `rulebook.ts` (**the only rule logic**, 10 rules as `{id, severity, text, check(ctx)}`; text and severity are loaded from `data/rulebook.json`), `repair.ts`, `validate.ts`, `explain.ts`, `changelog.ts`, `format.ts`. Rule text lives in `data/rulebook.json` (Sheet 4) next to `data/carriers.json` (Sheet 3).
+
+**Decisions made while building (conservative, logged)**
+
+- E-1 **Repair clusters.** Failing identity checks (R-02, R-03 per item, R-04, R-07) are grouped into connected components through the mutable fields each can be repaired through. R-02: declared value + quantities. R-03@item: that item's quantity + cartons. R-04: booking cartons + item cartons. R-07: gross weight only (an inequality can't imply a quantity). Each component runs Stage 1 → 2 → 3 independently. Every candidate is verified by re-running the real rulebook: it must clear every failing check in its component and break **no** passing check anywhere (R-05 included).
+- E-2 **High confidence** = exactly one accepted candidate (every other candidate either breaks a passing check or doesn't clear the failures), integer for counts, 2 dp for money, never for weight. Two or more accepted with an equal score → Ambiguous. Two or more with different scores → the best is shown at Possible, with the others listed.
+- E-3 If a High fix in one component also clears R-07, the separate weight-floor note is dropped (it would otherwise send the seller to change the wrong number).
+- E-4 **R-05 remedies are seller actions, not data repairs.** Pallets are a physical decision, so "Re-pack onto N pallets (opens Carrier X)", "Switch to Carrier B (£630)" and "Keep C: use 4 pallets (+1)" are one-click actions that are re-validated after applying. Gross weight stays a Possible note only. R-08's "I've booked the appointment" is the same kind of seller action.
+- E-5 **Stage 3** emits one report per broken check (spec: "report each broken rule separately"). `expected.json` writes fixture 12 as one aggregate entry; the test checks that the union of the reports' rules equals it and that every report is Possible, apply-disabled and carries the exact fallback line.
+- E-6 **Balanced ties** are broken by cost, then transit (the spec doesn't say). Slider weights are normalised to sum to 1.
+- E-7 **D-02 at booking level.** A blank booking number or required value (cartons, declared value, gross, ready date, destination type, appointment for warehouses, unresolvable destination) is flagged D-02 "Booking is missing …" and its rules are marked not checked. This extends D-02, which the spec defines for items. Missing item numbers affect only the identities they feed: quantity → R-02/03/07, price → R-02, units per carton → R-03, cartons → R-03/04, unit weight → R-07.
+- E-8 **Verdict also becomes INCOMPLETE** if any rule ends up not checked or cannot compute without a D-code. "Clear" is never claimed over an unchecked rule.
+
+**Tests (85):**
+- `tests/engine.fixtures.test.ts` (59): every fixture against `expected.json`. Covers verdict, rule statuses, gate codes, kg/pallet, R-05 state, feasible / recommended / chosen, cost, Ready → Collection → ETA, min pallets, ETA per carrier, Balanced scores, repairs (stage, confidence, changes, options, floor, apply state), the hazard kind, the override actions, and the Demo variants with the exact change-log lines.
+- `tests/engine.rules.test.ts` (26): `carriers.json` equals Sheet 3; `rulebook.json` and `RULES` equal Sheet 4. R-02 at exactly 1% passes and at +£0.01 over fails, on both sides. R-10: today passes, yesterday fails. R-01 cases: `.0`, dots, letters, 5-digit caveat. R-05 cap is inclusive. R-06-I stays Red until the declaration; the audit line names no identity; explicit beats a confirmation; the model can only add "implied"; the Local list covers the spec examples. Verdict precedence. D-02 exclusion. The worked case (quantity 1080, High, both arithmetic lines). Weight is never High. Stage 3 has no apply. Trusted fields are refused. The Balanced worked check plus max == min. Ranking modes. Weekend dates. Demo 1 and 2. **The invariant:** 400 deterministic perturbed bookings, where every Stage 1/2 suggestion (all Ambiguous options included) and every seller action clears its target and breaks nothing. **Clock injection:** a static check that no engine module calls `Date.now()` or `new Date(`.
+- `npx tsc --noEmit` → clean.
+
+**Gate 2 evidence**
+
+```
+$ npx vitest run
+ ✓ tests/engine.fixtures.test.ts (59 tests)
+ ✓ tests/engine.rules.test.ts (26 tests)
+ Test Files  2 passed (2)
+      Tests  85 passed (85)        ← zero skipped
+```
+- Stage 3 (f12): four separate reports, all Possible / apply disabled / fallback line, and no apply anywhere on the booking. I printed the real output to confirm it isn't vacuous.
+- Demo 1 (2 → 3 pallets) log: `Pallets 2 -> 3 | Weight/pallet 800 -> 533 kg | R-05 Red (no carrier fits) -> Pass | Carrier none -> B (3d, GBP 660)`. Demo 2 (3 → 4): `Pallets 3 -> 4 | Weight/pallet 420 -> 315 kg | No checks changed | Carrier B (3d, GBP 660) -> C (2d, GBP 1,360) +GBP 700, 1 day faster`. Weekend: collection Mon 9 Nov, A ETA Mon 16 Nov. Thursday: A ETA Tue 10 Nov.
+
+**Gate 2:** PASS.

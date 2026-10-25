@@ -1,0 +1,104 @@
+{
+  "source": "docs/template.xlsx, sheet 'Carrier options' (FIXED - judges use exactly this rate card)",
+  "carriers": [
+    {
+      "carrier": "Carrier A",
+      "service": "Road economy",
+      "originCountry": "United Kingdom",
+      "destinationCountry": "Germany",
+      "pricePerPallet": 180,
+      "currency": "GBP",
+      "transitDays": 5,
+      "onTimePct": 92,
+      "maxKgPerPallet": 500
+    },
+    {
+      "carrier": "Carrier B",
+      "service": "Road standard",
+      "originCountry": "United Kingdom",
+      "destinationCountry": "Germany",
+      "pricePerPallet": 220,
+      "currency": "GBP",
+      "transitDays": 3,
+      "onTimePct": 95,
+      "maxKgPerPallet": 750
+    },
+    {
+      "carrier": "Carrier C",
+      "service": "Road express",
+      "originCountry": "United Kingdom",
+      "destinationCountry": "Germany",
+      "pricePerPallet": 340,
+      "currency": "GBP",
+      "transitDays": 2,
+      "onTimePct": 98,
+      "maxKgPerPallet": 400
+    },
+    {
+      "carrier": "Carrier A",
+      "service": "Road economy",
+      "originCountry": "United Kingdom",
+      "destinationCountry": "France",
+      "pricePerPallet": 170,
+      "currency": "GBP",
+      "transitDays": 5,
+      "onTimePct": 92,
+      "maxKgPerPallet": 500
+    },
+    {
+      "carrier": "Carrier B",
+      "service": "Road standard",
+      "originCountry": "United Kingdom",
+      "destinationCountry": "France",
+      "pricePerPallet": 210,
+      "currency": "GBP",
+      "transitDays": 3,
+      "onTimePct": 95,
+      "maxKgPerPallet": 750
+    },
+    {
+      "carrier": "Carrier C",
+      "service": "Road express",
+      "originCountry": "United Kingdom",
+      "destinationCountry": "France",
+      "pricePerPallet": 330,
+      "currency": "GBP",
+      "transitDays": 2,
+      "onTimePct": 98,
+      "maxKgPerPallet": 400
+    },
+    {
+      "carrier": "Carrier A",
+      "service": "Road economy",
+      "originCountry": "United Kingdom",
+      "destinationCountry": "Netherlands",
+      "pricePerPallet": 160,
+      "currency": "GBP",
+      "transitDays": 5,
+      "onTimePct": 92,
+      "maxKgPerPallet": 500
+    },
+    {
+      "carrier": "Carrier B",
+      "service": "Road standard",
+      "originCountry": "United Kingdom",
+      "destinationCountry": "Netherlands",
+      "pricePerPallet": 200,
+      "currency": "GBP",
+      "transitDays": 3,
+      "onTimePct": 95,
+      "maxKgPerPallet": 750
+    },
+    {
+      "carrier": "Carrier C",
+      "service": "Road express",
+      "originCountry": "United Kingdom",
+      "destinationCountry": "Netherlands",
+      "pricePerPallet": 320,
+      "currency": "GBP",
+      "transitDays": 2,
+      "onTimePct": 98,
+      "maxKgPerPallet": 400
+    }
+  ]
+}
