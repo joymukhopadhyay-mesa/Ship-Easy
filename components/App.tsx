@@ -16,7 +16,9 @@ import type { BookingResult, Env, HazardKind, Item, Weights } from "@/lib/types"
 import { reconcile, validateBooking, type Reconciliation } from "@/lib/validate";
 import { BookingCard } from "./BookingCard";
 import { AssumptionsPanel, PrivacyPanel, type SentRecord } from "./Panels";
-import { Btn, Card, CardHeader, Pill, Toggle, TruckIcon, VerdictBadge } from "./ui";
+import { Btn, Card, CardHeader, Pill, Toggle, TruckIcon } from "./ui";
+import { Overview, type Row } from "./Overview";
+import { Chip, Dot, Icon, Legend, StatusPill, VehicleImg, VERDICT_TONE } from "./visuals";
 
 type Msg = { role: "user" | "bot"; text: string; at: string };
 
@@ -49,7 +51,9 @@ function narrativeKey(scope: string, r: BookingResult): string {
 }
 
 export default function App({ today }: { today: string }) {
-  const [tab, setTab] = useState<"chat" | "upload">("chat");
+  const [tab, setTab] = useState<"overview" | "chat" | "upload">("overview");
+  const [openFile, setOpenFile] = useState(false);
+  const [showHelp, setShowHelp] = useState(true);
   const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
   const [hazardHints, setHazardHints] = useState<Record<string, HazardKind>>({});
   const env: Env = useMemo(() => ({ today, weights, hazardHints }), [today, weights, hazardHints]);
@@ -232,6 +236,8 @@ export default function App({ today }: { today: string }) {
       setRecon(reconcile(parsed, ss.map((s) => s.result)));
       setNotes(parsed.notes);
       setSelected(0);
+      setOpenFile(false);
+      setTab("overview");
       setFileName(name);
       const scope = `file:${name}:${Date.now()}`;
       setUploadScope(scope);
@@ -264,7 +270,7 @@ export default function App({ today }: { today: string }) {
 
   const chatScope = `chat:${chatRun}`;
   const chatReady = chat.session.capture === null && !chat.pending && chat.baselined;
-  const shown = tab === "chat" ? (chatReady ? { scope: chatScope, result: chat.session.result } : null) : sessions[selected] ? { scope: uploadScope, result: sessions[selected].result } : null;
+  const shown = tab === "chat" ? (chatReady ? { scope: chatScope, result: chat.session.result } : null) : tab === "overview" && openFile && sessions[selected] ? { scope: uploadScope, result: sessions[selected].result } : null;
   const shownKey = shown ? narrativeKey(shown.scope, shown.result) : null;
   useEffect(() => {
     if (!shown || !shownKey || localOnly || narratives[shownKey]) return;
@@ -288,6 +294,7 @@ export default function App({ today }: { today: string }) {
         onWeights={setWeights}
         onEdits={onEdits}
         showAddPallet
+        mode={mode === "chat" ? "chat" : "file"}
         narrative={localOnly ? null : mode === "chat" && !chatReady ? null : (narratives[narrativeKey(mode === "chat" ? chatScope : uploadScope, s.result)] ?? "Updating the explanation for the latest version of this booking…")}
         onConfirmHazard={(rowId) => onEdits([{ path: "item.hazardConfirmedAt", rowId, value: stamp() }], "declaration")}
         onDownloadXlsx={() => download(correctedWorkbook(allResults), mode === "chat" ? "ship-easy-booking.xlsx" : `corrected-${fileName ?? "bookings.xlsx"}`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
@@ -296,127 +303,196 @@ export default function App({ today }: { today: string }) {
     );
   };
 
+  const greeting = (() => {
+    const h = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", hour12: false }).format(new Date()));
+    return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+  })();
+  const rows: Row[] = [
+    ...(chat.session.booking.items.length || chat.session.booking.destinationCity ? [{ key: "chat", source: "chat" as const, result: chat.session.result, edits: chat.session.log.length }] : []),
+    ...sessions.map((s, k) => ({ key: `file-${k}`, source: "file" as const, result: s.result, edits: s.log.length })),
+  ];
+  const openRow = (key: string) => {
+    if (key === "chat") { setTab("chat"); return; }
+    setSelected(Number(key.replace("file-", "")));
+    setOpenFile(true);
+    setTab("overview");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const NAV: { id: typeof tab; label: string; icon: string; badge?: number }[] = [
+    { id: "overview", label: "Overview", icon: "grid", badge: rows.filter((r) => r.result.verdict === "BLOCKED").length || undefined },
+    { id: "chat", label: "Book by chat", icon: "chat" },
+    { id: "upload", label: "Upload sheets", icon: "upload" },
+  ];
+  const go = (id: typeof tab) => { setTab(id); if (id === "overview") setOpenFile(false); };
+
   return (
-    <div className="mx-auto max-w-[1400px] px-4 pb-16 pt-4 md:px-6">
-      {/* top bar, after the reference's pill navigation */}
-      <header className="flex flex-wrap items-center justify-between gap-3 rounded-card bg-white px-4 py-3 shadow-card">
-        <div className="flex items-center gap-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-white"><TruckIcon className="h-5 w-5" /></span>
-          <div><p className="text-sm font-semibold leading-tight">Ship Easy</p><p className="text-[10px] text-muted">Shipment booking & pre-flight checker</p></div>
+    <div className="min-h-screen md:pl-[84px]">
+      {/* slim icon sidebar (reference video) */}
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[84px] flex-col items-center gap-2 border-r border-line bg-white py-5 md:flex">
+        <span className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-ink text-white"><TruckIcon className="h-5 w-5" /></span>
+        {NAV.map((n) => (
+          <button key={n.id} data-testid={`nav-${n.id}`} onClick={() => go(n.id)} title={n.label} className={`group relative flex w-16 flex-col items-center gap-1 rounded-2xl py-2.5 text-[10px] font-medium transition ${tab === n.id ? "bg-ink text-white" : "text-muted hover:bg-[#F4F5F7] hover:text-ink"}`}>
+            <Icon name={n.icon} />
+            <span className="leading-tight">{n.label.split(" ")[0]}</span>
+            {n.badge ? <span className="absolute right-2 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-bad px-1 text-[9px] font-bold text-white">{n.badge}</span> : null}
+          </button>
+        ))}
+        <div className="mt-auto flex flex-col items-center gap-2">
+          <button onClick={() => setShowAssumptions(true)} title="Assumptions" className="flex w-16 flex-col items-center gap-1 rounded-2xl py-2 text-[10px] text-muted hover:bg-[#F4F5F7]"><Icon name="book" />Rules</button>
+          <button onClick={() => setShowPrivacy(true)} title="Privacy" className="flex w-16 flex-col items-center gap-1 rounded-2xl py-2 text-[10px] text-muted hover:bg-[#F4F5F7]"><Icon name="shield" />Privacy</button>
         </div>
-        <nav className="flex rounded-full bg-[#F4F5F7] p-1">
-          <Pill testId="tab-chat" active={tab === "chat"} onClick={() => setTab("chat")}>Chat booking</Pill>
-          <Pill testId="tab-upload" active={tab === "upload"} onClick={() => setTab("upload")}>Upload sheets</Pill>
+      </aside>
+
+      <div className="mx-auto max-w-[1440px] px-4 pb-16 pt-4 md:px-7">
+        {/* header: greeting + nav pills (mobile) + controls (reference images 1 & video) */}
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-ink text-white md:hidden"><TruckIcon className="h-5 w-5" /></span>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Ship Easy · UK → Germany · France · Netherlands</p>
+              <h1 className="text-3xl font-light tracking-tight md:text-[40px]">{greeting}<span className="text-muted">.</span> <span className="font-semibold">{tab === "overview" ? (openFile ? "Shipment check" : "Your shipments") : tab === "chat" ? "Book by chat" : "Upload sheets"}</span></h1>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 rounded-full bg-white px-3 py-2 text-xs shadow-card"><Icon name="calendar" className="h-4 w-4 text-muted" /><span className="text-muted">Today</span> <b data-testid="today">{prettyDate(today)}</b></div>
+            <div className="rounded-full bg-white px-3 py-2 shadow-card"><Toggle testId="local-only" on={localOnly} onChange={(v) => { setLocalOnly(v); setBanner(null); }} label={localOnly ? "Local-only (no AI)" : "AI on"} /></div>
+            <button data-testid="new-booking" onClick={() => { resetChat(); setTab("chat"); }} className="flex items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-xs font-semibold text-white shadow-[0_6px_16px_rgba(91,76,245,.35)] hover:opacity-90"><Icon name="plus" className="h-4 w-4" /> New booking</button>
+          </div>
+        </header>
+        <nav className="mt-3 flex w-fit rounded-full bg-white p-1 shadow-card md:hidden">
+          {NAV.map((n) => <Pill key={n.id} testId={`tab-${n.id}`} active={tab === n.id} onClick={() => go(n.id)}>{n.label}</Pill>)}
         </nav>
-        <div className="flex flex-wrap items-center gap-3">
-          <Toggle testId="local-only" on={localOnly} onChange={(v) => { setLocalOnly(v); setBanner(null); }} label="Local-only mode" />
-          <Btn variant="light" onClick={() => setShowAssumptions(true)} testId="open-assumptions">Assumptions</Btn>
-          <Btn variant="light" onClick={() => setShowPrivacy(true)} testId="open-privacy">Privacy</Btn>
-        </div>
-      </header>
+        <div className="hidden"><button data-testid="tab-chat" onClick={() => go("chat")} /><button data-testid="tab-upload" onClick={() => go("upload")} /><button data-testid="open-assumptions" onClick={() => setShowAssumptions(true)} /><button data-testid="open-privacy" onClick={() => setShowPrivacy(true)} /></div>
 
-      {banner && <div data-testid="fallback-banner" className="mt-3 rounded-2xl bg-amber-50 px-4 py-2.5 text-sm text-warn ring-1 ring-amber-200">{banner}</div>}
+        {banner && <div data-testid="fallback-banner" className="mt-3 flex items-center gap-2 rounded-2xl bg-warnSoft px-4 py-2.5 text-sm text-warn ring-1 ring-warnBright/30"><Icon name="alert" className="h-4 w-4" />{banner}</div>}
 
-      <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Pre-flight check</h1>
-          <p className="mt-1 text-sm text-muted">UK → Germany · France · Netherlands. Describe a shipment or upload your sheets; every booking gets a verdict, the fixes and a carrier.</p>
-        </div>
-        <div className="rounded-full bg-white px-4 py-2 text-xs shadow-card"><span className="text-muted">Today</span> <b data-testid="today">{prettyDate(today)}</b> <span className="text-muted">· Europe/London</span></div>
-      </div>
+        {showHelp && (
+          <div className="anim-fade-up mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-3 shadow-card">
+            <div className="flex flex-wrap items-center gap-3"><span className="flex items-center gap-1.5 text-xs font-semibold"><Icon name="info" className="h-4 w-4 text-accent" /> How to read the colours</span><Legend compact /></div>
+            <button className="text-xs text-muted hover:text-ink" onClick={() => setShowHelp(false)}>Got it</button>
+          </div>
+        )}
 
-      {tab === "chat" ? (
-        <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(340px,420px)_1fr]">
-          <Card className="flex h-fit min-w-0 flex-col lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)]">
-            <CardHeader title="Describe your shipment" subtitle={localOnly ? "Local-only: understood by on-device rules, no AI" : "Gemini reads your words into fields; code does every number"} right={<Btn variant="ghost" onClick={() => resetChat()} testId="chat-reset">Start over</Btn>} />
-            <div ref={logRef} data-testid="chat-log" className="mt-3 max-h-[60vh] min-h-[220px] flex-1 space-y-3 overflow-y-auto px-5 lg:max-h-none">
-              {msgs.map((m, k) => (
-                <div key={k} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[88%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm ${m.role === "user" ? "bg-ink text-white" : "bg-[#F4F5F7] text-ink"}`} data-testid={m.role === "bot" ? "bot-msg" : "user-msg"}>{m.text}</div>
+        <div className="mt-5">
+          {tab === "overview" && (openFile && sessions[selected] ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <button data-testid="back-overview" onClick={() => setOpenFile(false)} className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-semibold shadow-card hover:bg-zinc-50"><Icon name="back" className="h-4 w-4" /> All shipments</button>
+                <div className="flex gap-1 overflow-x-auto">
+                  {sessions.map((s, k) => (
+                    <button key={k} data-testid={`booking-tab-${s.booking.bookingId}`} onClick={() => setSelected(k)} className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ${k === selected ? "bg-white shadow-card ring-2 ring-accent" : "bg-white/60 hover:bg-white"}`}>
+                      <Dot tone={VERDICT_TONE[s.result.verdict]} />{s.booking.bookingId}
+                    </button>
+                  ))}
                 </div>
-              ))}
-              {busy && <div className="text-xs text-muted">Thinking…</div>}
-            </div>
-            <div className="border-t border-line p-4">
-              <div className="mb-2 flex flex-wrap gap-1.5">
-                {chat.session.log.length === 0 && EXAMPLES.map((e) => <button key={e.label} data-testid={e.testId} onClick={() => send(e.text, resetChat(`Example: ${e.label}`))} className="rounded-full bg-[#F4F5F7] px-2.5 py-1 text-[11px] font-medium hover:bg-zinc-200">{e.label}</button>)}
-                {chat.baselined && <button data-testid="chip-add-pallet" onClick={() => send("add another pallet")} className="rounded-full bg-ink px-2.5 py-1 text-[11px] font-semibold text-white">+ add another pallet</button>}
               </div>
-              <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); send(input); }}>
-                <input data-testid="chat-input" value={input} onChange={(e) => setInput(e.target.value.slice(0, 1000))} placeholder="e.g. 1,000 mugs to Berlin, £5 each…" className="min-w-0 flex-1 rounded-full border border-line bg-white px-4 py-2 text-sm outline-none focus:border-ink" />
-                <Btn testId="chat-send" disabled={busy || !input.trim()}>Send</Btn>
-              </form>
+              {cardFor("upload")}
             </div>
-          </Card>
-          <div className="min-w-0">{cardFor("chat")}</div>
-        </div>
-      ) : (
-        <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(320px,400px)_1fr]">
-          <div className="min-w-0 space-y-4">
-            <Card>
-              <CardHeader title="Upload Bookings & Items" subtitle="Template structure (header row 2, example row 3). Parsed in your browser — nothing is uploaded." />
-              <div className="p-5">
-                <label
-                  onDragOver={(e) => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)}
-                  onDrop={(e) => { e.preventDefault(); setDragging(false); onFile(e.dataTransfer.files?.[0]); }}
-                  className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-4 py-8 text-center transition ${dragging ? "border-ink bg-zinc-50" : "border-zinc-300"}`}>
-                  <span className="text-sm font-semibold">Drop your .xlsx here</span>
-                  <span className="mt-1 text-xs text-muted">or click to choose a file</span>
-                  <input data-testid="file-input" type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ""; }} />
-                </label>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Btn testId="load-sample" onClick={loadSample}>Load sample file</Btn>
-                  <a href="/template.xlsx" download className="inline-flex items-center rounded-full bg-white px-3.5 py-1.5 text-xs font-semibold ring-1 ring-line hover:bg-zinc-50">Download blank template</a>
+          ) : (
+            <Overview rows={rows} onOpen={openRow} onSample={() => void loadSample()} onChatDemo={() => { setTab("chat"); send(EXAMPLES[0].text, resetChat(`Example: ${EXAMPLES[0].label}`)); }} onUpload={() => setTab("upload")} reconciliation={recon?.line ?? null} />
+          ))}
+
+          {tab === "chat" && (
+            <div className="grid gap-5 lg:grid-cols-[minmax(340px,410px)_1fr]">
+              <Card className="flex h-fit min-w-0 flex-col lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)]">
+                <div className="flex items-start justify-between gap-3 px-5 pt-5">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-accentSoft text-accent"><Icon name="spark" /></span>
+                    <div><h3 className="text-[15px] font-semibold">Booking assistant</h3><p className="text-xs text-muted">{localOnly ? "Local-only: on-device rules, no AI" : "AI reads your words · code does every number"}</p></div>
+                  </div>
+                  <Btn variant="ghost" onClick={() => resetChat()} testId="chat-reset">Start over</Btn>
                 </div>
-                {uploadError && <p className="mt-3 text-sm text-bad">{uploadError}</p>}
-              </div>
-            </Card>
-            {recon && (
+                <div ref={logRef} data-testid="chat-log" className="mt-3 max-h-[60vh] min-h-[220px] flex-1 space-y-3 overflow-y-auto px-5 lg:max-h-none">
+                  {msgs.map((m, k) => (
+                    <div key={k} className={`anim-fade-up flex ${m.role === "user" ? "justify-end" : "justify-start gap-2"}`}>
+                      {m.role === "bot" && <span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accentSoft text-accent"><Icon name="spark" className="h-3.5 w-3.5" /></span>}
+                      <div className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm ${m.role === "user" ? "rounded-br-md bg-ink text-white" : "rounded-tl-md bg-[#F4F5F7] text-ink"}`} data-testid={m.role === "bot" ? "bot-msg" : "user-msg"}>{m.text}</div>
+                    </div>
+                  ))}
+                  {busy && <div className="flex items-center gap-2 text-xs text-muted"><span className="anim-shimmer h-6 w-24 rounded-full" /> Checking…</div>}
+                </div>
+                <div className="border-t border-line p-4">
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    {chat.session.log.length === 0 && EXAMPLES.map((e) => <button key={e.label} data-testid={e.testId} onClick={() => send(e.text, resetChat(`Example: ${e.label}`))} className="rounded-full bg-[#F4F5F7] px-2.5 py-1 text-[11px] font-medium hover:bg-accentSoft hover:text-accent">{e.label}</button>)}
+                    {chat.baselined && <button data-testid="chip-add-pallet" onClick={() => send("add another pallet")} className="rounded-full bg-accent px-2.5 py-1 text-[11px] font-semibold text-white">+ add another pallet</button>}
+                  </div>
+                  <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); send(input); }}>
+                    <input data-testid="chat-input" value={input} onChange={(e) => setInput(e.target.value.slice(0, 1000))} placeholder="e.g. 1,000 mugs to Berlin, £5 each…" className="min-w-0 flex-1 rounded-full border border-line bg-white px-4 py-2 text-sm outline-none focus:border-accent" />
+                    <Btn testId="chat-send" disabled={busy || !input.trim()}>Send</Btn>
+                  </form>
+                </div>
+              </Card>
+              <div className="min-w-0">{cardFor("chat")}</div>
+            </div>
+          )}
+
+          {tab === "upload" && (
+            <div className="grid gap-5 lg:grid-cols-[minmax(320px,420px)_1fr]">
               <Card>
-                <CardHeader title={fileName ?? "Bookings"} subtitle={uploadNarrative(sessions.map((s) => s.result))} />
-                <p data-testid="reconciliation" className="mx-5 mt-3 rounded-xl bg-[#F4F5F7] px-3 py-2 font-mono text-xs font-semibold">{recon.line}</p>
-                {notes.map((n, k) => <p key={k} className="mx-5 mt-2 text-xs text-warn">{n}</p>)}
-                <ul data-testid="booking-list" className="mt-3 max-h-[480px] overflow-y-auto pb-3">
-                  {sessions.map((s, k) => {
-                    const r = s.result;
-                    const red = r.rules.filter((x) => x.status === "fail" && x.severity === "Red").map((x) => x.id);
-                    const amb = r.rules.filter((x) => x.status === "fail" && x.severity === "Amber").map((x) => x.id);
-                    return (
-                      <li key={`${s.booking.bookingId}-${s.booking.row}`}>
-                        <button data-testid={`booking-${s.booking.bookingId}`} onClick={() => setSelected(k)} className={`flex w-full items-center justify-between gap-2 px-5 py-2.5 text-left hover:bg-zinc-50 ${k === selected ? "bg-zinc-100" : ""}`}>
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold">{s.booking.bookingId}{s.booking.duplicateOf ? " (duplicate ID)" : ""} <span className="font-normal text-muted">· {s.booking.destinationCity ?? "?"}</span></p>
-                            <p className="truncate text-[11px] text-muted">{[...red.map((x) => `${x} Red`), ...amb.map((x) => `${x} Amber`), ...r.gate.map((g) => g.code)].join(" · ") || "no findings"}{s.log.length ? ` · ${s.log.length} edit(s)` : ""}</p>
-                          </div>
-                          <VerdictBadge verdict={r.verdict} size="sm" />
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-                {orphans.length > 0 && (
-                  <div data-testid="unmatched" className="border-t border-line px-5 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Unmatched item rows (D-03)</p>
-                    {orphans.map((o) => <p key={o.row} className="mt-1 text-xs">Row {o.row}: Booking ID <b>{o.bookingId}</b> ({o.sku} {o.description}) has no matching booking.</p>)}
+                <div className="p-5">
+                  <h3 className="text-[15px] font-semibold">Upload Bookings & Items</h3>
+                  <p className="text-xs text-muted">Template structure (header row 2, example row 3). Read in your browser — nothing is uploaded.</p>
+                  <label
+                    onDragOver={(e) => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)}
+                    onDrop={(e) => { e.preventDefault(); setDragging(false); onFile(e.dataTransfer.files?.[0]); }}
+                    className={`mt-4 flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-4 py-10 text-center transition ${dragging ? "border-accent bg-accentSoft" : "border-zinc-300 hover:border-accent"}`}>
+                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-accentSoft text-accent"><Icon name="upload" /></span>
+                    <span className="mt-3 text-sm font-semibold">Drop your .xlsx here</span>
+                    <span className="mt-1 text-xs text-muted">or click to choose a file</span>
+                    <input data-testid="file-input" type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ""; }} />
+                  </label>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Btn testId="load-sample" onClick={loadSample}>Load sample file</Btn>
+                    <a href="/template.xlsx" download className="inline-flex items-center rounded-full bg-white px-3.5 py-1.5 text-xs font-semibold ring-1 ring-line hover:bg-zinc-50">Download blank template</a>
+                  </div>
+                  {uploadError && <p className="mt-3 text-sm text-bad">{uploadError}</p>}
+                </div>
+              </Card>
+              <Card>
+                {recon ? (
+                  <>
+                    <CardHeader title={fileName ?? "Bookings"} subtitle={uploadNarrative(sessions.map((s) => s.result))} right={<Btn onClick={() => go("overview")}>Open dashboard</Btn>} />
+                    <p data-testid="reconciliation" className="mx-5 mt-3 inline-flex rounded-full bg-[#F4F5F7] px-3 py-1 font-mono text-xs font-semibold">{recon.line}</p>
+                    {notes.map((n, k) => <p key={k} className="mx-5 mt-2 text-xs text-warn">{n}</p>)}
+                    <ul data-testid="booking-list" className="mt-3 max-h-[520px] overflow-y-auto pb-3">
+                      {sessions.map((s, k) => {
+                        const r = s.result;
+                        return (
+                          <li key={`${s.booking.bookingId}-${s.booking.row}`}>
+                            <button data-testid={`booking-${s.booking.bookingId}`} onClick={() => openRow(`file-${k}`)} className="flex w-full items-center justify-between gap-2 px-5 py-2.5 text-left hover:bg-zinc-50">
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold">{s.booking.bookingId}{s.booking.duplicateOf ? " (duplicate ID)" : ""} <span className="font-normal text-muted">· {s.booking.originCity ?? "?"} → {s.booking.destinationCity ?? "?"}</span></p>
+                                <div className="mt-1 flex flex-wrap gap-1">{r.rules.filter((x) => x.status === "fail").map((x) => <Chip key={x.id} tone={x.severity === "Red" ? "bad" : "warn"}>{x.id}</Chip>)}{r.gate.map((g, j) => <Chip key={j} tone="grey">{g.code}</Chip>)}</div>
+                              </div>
+                              <StatusPill verdict={r.verdict} size="sm" />
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    {orphans.length > 0 && (
+                      <div data-testid="unmatched" className="border-t border-line px-5 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Unmatched item rows (D-03)</p>
+                        {orphans.map((o) => <p key={o.row} className="mt-1 text-xs">Row {o.row}: Booking ID <b>{o.bookingId}</b> ({o.sku} {o.description}) has no matching booking.</p>)}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex h-full flex-col items-center justify-center p-10 text-center">
+                    <VehicleImg src="/img/van.png" alt="Van" className="h-32 w-full max-w-xs" />
+                    <p className="mt-2 text-lg font-semibold">No file yet</p>
+                    <p className="mt-1 max-w-sm text-sm text-muted">Upload your Bookings and Items sheets, or press <b>Load sample file</b> to see a multi-booking check with planted mistakes.</p>
                   </div>
                 )}
               </Card>
-            )}
-          </div>
-          <div className="min-w-0">
-            {sessions.length ? cardFor("upload") : (
-              <Card className="p-10 text-center">
-                <p className="text-lg font-semibold">No file yet</p>
-                <p className="mt-1 text-sm text-muted">Upload your Bookings and Items sheets, or press <b>Load sample file</b> to see a multi-booking check with planted mistakes.</p>
-              </Card>
-            )}
-          </div>
+            </div>
+          )}
         </div>
-      )}
 
-      <AssumptionsPanel open={showAssumptions} onClose={() => setShowAssumptions(false)} />
-      <PrivacyPanel open={showPrivacy} onClose={() => setShowPrivacy(false)} sent={sent} localOnly={localOnly} />
-      <footer className="mt-10 text-center text-[11px] text-muted">Rules and rates are the fixed template Sheets 3 and 4. Every number is computed by tested code; AI only reads your words and writes explanations.</footer>
+        <AssumptionsPanel open={showAssumptions} onClose={() => setShowAssumptions(false)} />
+        <PrivacyPanel open={showPrivacy} onClose={() => setShowPrivacy(false)} sent={sent} localOnly={localOnly} />
+        <footer className="mt-10 text-center text-[11px] text-muted">Rules and rates are the fixed template Sheets 3 and 4. Every number is computed by tested code; AI only reads your words and writes explanations. <button className="underline" onClick={() => setShowAssumptions(true)}>Assumptions</button> · <button className="underline" onClick={() => setShowPrivacy(true)}>Privacy</button></footer>
+      </div>
     </div>
   );
 }

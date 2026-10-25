@@ -12,7 +12,9 @@ import { invoiceDraft } from "@/lib/invoice";
 import { sellerActions, type SellerAction } from "@/lib/repair";
 import type { Edit } from "@/lib/session";
 import type { BookingResult, Change, Env, Item, Repair, RuleResult, Weights } from "@/lib/types";
-import { BoxIcon, Btn, Card, CardHeader, CheckIcon, ClockIcon, ConfidenceChip, ScaleIcon, SeverityChip, TruckArt, TruckIcon, VerdictBadge } from "./ui";
+import { BoxIcon, Btn, Card, CardHeader, CheckIcon, ConfidenceChip, SeverityChip } from "./ui";
+import { CarrierCards, ChangeCompare, LoadAndRoute, ShipmentHero } from "./ShipmentTop";
+import { CarrierGantt, HealthMatrix, Legend, ruleName, ruleTone, TONE } from "./visuals";
 
 export interface CardProps {
   result: BookingResult;
@@ -27,6 +29,7 @@ export interface CardProps {
   narrative?: string | null;
   emptyHint?: string;
   showAddPallet?: boolean;
+  mode?: "chat" | "file";
 }
 
 const changeToEdit = (c: Change): Edit => {
@@ -36,49 +39,6 @@ const changeToEdit = (c: Change): Edit => {
   };
   return { path: map[c.field], rowId: c.rowId, value: c.to as number };
 };
-
-function ChangeLogStrip({ log }: { log: ChangeLogEntry[] }) {
-  const [open, setOpen] = useState(false);
-  const last = log[log.length - 1];
-  return (
-    <div data-testid="changelog" className="mx-5 mt-4 rounded-2xl border border-line bg-[#FAFAFB] p-3">
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Change log {log.length ? `· ${log.length} edit${log.length > 1 ? "s" : ""}` : ""}</p>
-        {log.length > 1 && <button className="text-[11px] font-semibold text-accent" onClick={() => setOpen(!open)}>{open ? "Hide history" : "Show history"}</button>}
-      </div>
-      {!last ? (
-        <p className="mt-1 text-xs text-muted">No changes yet. Edit anything (or tell the chat) and the before → after diff appears here, with the checks that flipped.</p>
-      ) : (
-        <div className="mt-2">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] text-muted">{last.at} (Europe/London)</span>
-            {last.verdictFrom !== last.verdictTo ? (
-              <span className="flex items-center gap-1"><VerdictBadge verdict={last.verdictFrom} size="sm" /><span className="text-xs">→</span><VerdictBadge verdict={last.verdictTo} size="sm" /></span>
-            ) : null}
-          </div>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {last.lines.map((l, k) => {
-              const [from, to] = l.split(" -> ");
-              const good = /-> Pass$/.test(l), bad = /-> (Red|Amber)/.test(l), none = l === "No checks changed";
-              return (
-                <span key={k} className={`rounded-xl px-2.5 py-1 text-xs font-medium ${good ? "bg-green-50 text-ok" : bad ? "bg-red-50 text-bad" : none ? "bg-zinc-100 text-zinc-600" : "bg-white text-ink ring-1 ring-line"}`}>
-                  {to !== undefined ? (<>{from} <span className="text-muted">→</span> <b>{to}</b></>) : l}
-                </span>
-              );
-            })}
-          </div>
-          {open && (
-            <ol className="mt-3 space-y-1 border-t border-line pt-2">
-              {log.slice(0, -1).reverse().map((e, k) => (
-                <li key={k} className="text-[11px] text-muted"><span className="font-semibold text-ink">{e.at}</span> · {e.lines.join(" | ")}</li>
-              ))}
-            </ol>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function Field({ label, value, display, onCommit, type = "text", options, testId }: { label: string; value: string | number | boolean | null; display?: string; onCommit?: (v: string) => void; type?: "text" | "number" | "date" | "select"; options?: string[]; testId?: string }) {
   const [editing, setEditing] = useState(false);
@@ -133,9 +93,10 @@ function Finding({ rule, res, env, onApply, onAction, onConfirmHazard }: { rule:
   const actions = sellerActions(res.booking, res.rules, buildContext(res.booking, env)).filter((a) => a.rules.includes(rule.id));
   const pendingHazards = rule.id === "R-06" && rule.state === "implied" ? res.booking.items.filter((i) => (rule.itemRowIds ?? []).includes(i.rowId) && !i.hazardConfirmedAt) : [];
   return (
-    <li data-testid={`finding-${rule.id}`} className="border-t border-line px-5 py-3.5 first:border-t-0">
+    <li id={`finding-${rule.id}`} data-testid={`finding-${rule.id}`} className={`scroll-mt-24 border-l-4 border-t border-t-line px-5 py-3.5 first:border-t-0 ${rule.status === "fail" ? (rule.severity === "Red" ? "border-l-bad" : "border-l-warnBright") : "border-l-zinc-300"}`}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="rounded-lg bg-ink px-2 py-0.5 font-mono text-[11px] font-semibold text-white">{rule.id}</span>
+        <span className={`text-sm font-semibold ${TONE[ruleTone(rule)].text}`}>{ruleName(rule.id)}</span>
         <SeverityChip severity={rule.severity} status={rule.status} />
         <span className="text-[11px] text-muted">{rule.text}</span>
       </div>
@@ -155,7 +116,8 @@ function Finding({ rule, res, env, onApply, onAction, onConfirmHazard }: { rule:
   );
 }
 
-function CarrierPanel({ res, weights, onWeights, onEdits }: { res: BookingResult; weights: Weights; onWeights: (w: Weights) => void; onEdits: CardProps["onEdits"] }) {
+function CarrierPanel({ res, weights, onWeights, onEdits, today }: { res: BookingResult; weights: Weights; onWeights: (w: Weights) => void; onEdits: CardProps["onEdits"]; today: string }) {
+  const [showWhy, setShowWhy] = useState(false);
   const c = res.carrier;
   const cr = carrierReason(c);
   const chosen = c.options.find((o) => o.id === c.chosen);
@@ -186,7 +148,6 @@ function CarrierPanel({ res, weights, onWeights, onEdits }: { res: BookingResult
           {cr.runnerUp && <p className="mt-1 text-xs text-muted">{cr.runnerUp}</p>}
           {cr.excluded.map((x, k) => <p key={k} className="mt-0.5 text-xs text-bad">{x}</p>)}
         </div>
-        <div className="hidden md:block"><TruckArt /></div>
       </div>
       <div className="mx-5 grid grid-cols-3 gap-2 rounded-2xl bg-[#FAFAFB] p-3 ring-1 ring-line">
         {[["Ready", c.dates.ready], ["Collection", c.dates.collection], ["ETA", c.dates.eta]].map(([l, d], k) => (
@@ -197,6 +158,13 @@ function CarrierPanel({ res, weights, onWeights, onEdits }: { res: BookingResult
         ))}
       </div>
       <p className="mx-5 mt-1 text-[10px] text-muted">Collection = ready date if Mon–Fri, else next Monday. ETA = collection + transit (calendar days), rolled to Monday if it lands on a weekend. UK bank holidays not modelled.</p>
+      <div className="px-5 pt-4"><CarrierCards res={res} onPick={(id) => onEdits([{ path: "chosenCarrier", value: id }], "edit")} /></div>
+      <div className="px-5 pt-5">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">Timeline: collection → delivery for each carrier</p>
+        <CarrierGantt res={res} today={today} />
+      </div>
+      <div className="px-5 pt-3"><button className="text-xs font-semibold text-accent" onClick={() => setShowWhy(!showWhy)}>{showWhy ? "Hide" : "Show"} how carriers are ranked {showWhy ? "▴" : "▾"}</button></div>
+      <div className={showWhy ? "" : "hidden"}>
       <div className="overflow-x-auto px-5 pt-4">
         <table className="w-full min-w-[520px] text-left text-xs">
           <thead><tr className="text-muted"><th className="py-1.5">Carrier</th><th>Total</th><th>Transit</th><th>On-time</th><th>Max kg/pallet</th><th>Fits {kg(c.kgPerPallet)}/pallet?</th><th>ETA</th></tr></thead>
@@ -232,6 +200,8 @@ function CarrierPanel({ res, weights, onWeights, onEdits }: { res: BookingResult
         ) : <p className="mt-2 text-xs text-muted">No feasible carriers to score.</p>}
         <p className="mt-1 text-[10px] text-muted">score = {pct(c.weights.cost)}% × cost_n + {pct(c.weights.transit)}% × transit_n + {pct(c.weights.reliability)}% × reliability_n, min-max normalised over the feasible carriers (if max = min the term is 0). Default 40/30/30: cost is the main concern for SME exporters; a late arrival and a missed appointment cost about the same.</p>
       </div>
+      </div>
+      <div className="h-5" />
     </Card>
   );
 }
@@ -274,9 +244,6 @@ export function BookingCard(p: CardProps) {
   const ORDER = { fail: 0, cannot_compute: 1, not_checked: 1, pass: 2 } as const;
   const findings = res.rules.filter((r) => r.status !== "pass").sort((x, y) => ORDER[x.status] - ORDER[y.status] || (x.severity === y.severity ? 0 : x.severity === "Red" ? -1 : 1));
   const passed = res.rules.filter((r) => r.status === "pass");
-  const reds = res.rules.filter((r) => r.status === "fail" && r.severity === "Red").length;
-  const ambers = res.rules.filter((r) => r.status === "fail" && r.severity === "Amber").length;
-  const chosen = c.options.find((o) => o.id === c.chosen);
   const inv = invoiceDraft(b);
   const edit = (path: Edit["path"], value: Edit["value"]) => p.onEdits([{ path, value }], "edit");
   const apply = (cs: Change[]) => p.onEdits(cs.map(changeToEdit), "apply");
@@ -289,52 +256,17 @@ export function BookingCard(p: CardProps) {
 
   return (
     <div className="space-y-4" data-testid="booking-card">
-      <Card>
-        <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-5">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Booking card</p>
-            <h2 className="text-2xl font-semibold">{b.bookingId}{b.sellerName ? <span className="text-base font-normal text-muted"> · {b.sellerName}</span> : null}</h2>
-            <p className="mt-1 text-sm text-ink">{VERDICT_TEXT[res.verdict]}</p>
-          </div>
-          <VerdictBadge verdict={res.verdict} size="lg" />
+      <ShipmentHero res={res} mode={p.mode ?? "file"} />
+      <ChangeCompare log={p.log} />
+      <Card className="anim-fade-up p-5">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+          <div><h3 className="text-[15px] font-semibold">Shipment health · the 10 checks</h3><p className="text-xs text-muted">Green = OK · Amber = check before shipping · Red = must fix · Grey = waiting for details. Tap a tile to see the fix.</p></div>
+          <p className="text-xs text-muted"><b className="text-ink">{res.rules.filter((r) => r.status === "pass").length}/10</b> passing</p>
         </div>
-        <ChangeLogStrip log={p.log} />
-        <div className="grid grid-cols-2 gap-3 p-5 md:grid-cols-4">
-          {[
-            { icon: <ScaleIcon />, label: "Weight / pallet", value: kg(c.kgPerPallet) },
-            { icon: <TruckIcon />, label: "Carrier · cost", value: chosen ? `${chosen.id} · ${gbp(chosen.totalCost)}` : "none" },
-            { icon: <ClockIcon />, label: "ETA", value: prettyDate(c.dates.eta) },
-            { icon: <CheckIcon />, label: "Checks", value: `${reds} Red · ${ambers} Amber` },
-          ].map((k) => (
-            <div key={k.label} className="flex items-center gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F4F5F7] text-ink">{k.icon}</span>
-              <div className="min-w-0"><p className="truncate text-base font-semibold">{k.value}</p><p className="text-[11px] text-muted">{k.label}</p></div>
-            </div>
-          ))}
-        </div>
+        <HealthMatrix res={res} onPick={(id) => document.getElementById(`finding-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" })} />
       </Card>
-
-      <Card>
-        <CardHeader title="Booking details" subtitle="Filled fields are solid, missing ones are outlined. Click any value to edit; every edit re-runs the checks." right={p.showAddPallet ? <Btn testId="add-pallet" onClick={() => edit("pallets", (b.pallets ?? 0) + 1)}>+ Add a pallet</Btn> : undefined} />
-        <div className="grid grid-cols-2 gap-3 p-5 md:grid-cols-4">
-          <Field label="Origin" value={b.originCity} type="select" options={[...ORIGIN_CITIES]} onCommit={(v) => edit("originCity", v || null)} testId="f-origin" />
-          <Field label="Destination" value={b.destinationCity} display={b.destinationCity ? `${b.destinationCity}${b.destinationCountry ? ", " + b.destinationCountry : ""}` : undefined} type="select" options={Object.keys(DESTINATION_CITIES)} onCommit={(v) => edit("destinationCity", v || null)} testId="f-destination" />
-          <Field label="Destination type" value={b.destinationType} type="select" options={["Warehouse", "Business address"]} onCommit={(v) => edit("destinationType", v || null)} testId="f-desttype" />
-          <Field label="Ready date" value={b.readyDate} display={b.readyDate ? `${toDDMMYYYY(b.readyDate)} (${prettyDate(b.readyDate).slice(0, 3)})` : undefined} type="date" onCommit={(v) => { const iso = parseDDMMYYYY(v); if (iso || !v) edit("readyDate", iso); }} testId="f-ready" />
-          <Field label="Priority" value={b.priority} type="select" options={PRIORITIES} onCommit={(v) => edit("priority", v || null)} testId="f-priority" />
-          <Field label="Pallets" value={b.pallets} type="number" onCommit={(v) => edit("pallets", asNum(v))} testId="f-pallets" />
-          <Field label="Gross weight (kg)" value={b.grossWeight} type="number" onCommit={(v) => edit("grossWeight", asNum(v))} testId="f-gross" />
-          <Field label="Delivery appointment" value={b.appointmentBooked} type="select" options={["Yes", "No"]} onCommit={(v) => edit("appointmentBooked", v === "" ? null : v === "Yes")} testId="f-appt" />
-          <Field label="Cartons (booking)" value={b.cartons} type="number" onCommit={(v) => edit("cartons", asNum(v))} testId="f-cartons" />
-          <Field label="Declared value (GBP)" value={b.declaredValue} display={b.declaredValue != null ? gbp(b.declaredValue) : undefined} type="number" onCommit={(v) => edit("declaredValue", asNum(v))} testId="f-value" />
-          <Field label="Origin country" value={b.originCountry} />
-          <Field label="Currency" value={b.currency} />
-        </div>
-        <ItemsTable items={b.items} onEdits={p.onEdits} />
-      </Card>
-
       <Card id="findings">
-        <CardHeader title="Findings" subtitle="Rule ID, what's wrong, how serious, the numbers, and the fix with a confidence label. Only the 10 template rules can make a finding Red or Amber." />
+        <CardHeader title="What to fix" subtitle="Each problem: the rule, what's wrong, how serious, the numbers, and the fix with a confidence label. Red = must fix · Amber = check." />
         {res.gate.length > 0 && (
           <ul className="mx-5 mt-3 space-y-1 rounded-2xl bg-zinc-50 p-3 ring-1 ring-line">
             {res.gate.map((g, k) => <li key={k} className="text-xs"><span className="mr-1.5 rounded bg-zinc-700 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-white">{g.code}</span>{g.message}</li>)}
@@ -357,7 +289,28 @@ export function BookingCard(p: CardProps) {
         )}
       </Card>
 
-      <CarrierPanel res={res} weights={p.weights} onWeights={p.onWeights} onEdits={p.onEdits} />
+      <LoadAndRoute res={res} />
+
+      <CarrierPanel res={res} weights={p.weights} onWeights={p.onWeights} onEdits={p.onEdits} today={env.today} />
+
+      <Card>
+        <CardHeader title="Booking details" subtitle="Filled fields are solid, missing ones are outlined. Click any value to edit; every edit re-runs the checks." right={p.showAddPallet ? <Btn testId="add-pallet" onClick={() => edit("pallets", (b.pallets ?? 0) + 1)}>+ Add a pallet</Btn> : undefined} />
+        <div className="grid grid-cols-2 gap-3 p-5 md:grid-cols-4">
+          <Field label="Origin" value={b.originCity} type="select" options={[...ORIGIN_CITIES]} onCommit={(v) => edit("originCity", v || null)} testId="f-origin" />
+          <Field label="Destination" value={b.destinationCity} display={b.destinationCity ? `${b.destinationCity}${b.destinationCountry ? ", " + b.destinationCountry : ""}` : undefined} type="select" options={Object.keys(DESTINATION_CITIES)} onCommit={(v) => edit("destinationCity", v || null)} testId="f-destination" />
+          <Field label="Destination type" value={b.destinationType} type="select" options={["Warehouse", "Business address"]} onCommit={(v) => edit("destinationType", v || null)} testId="f-desttype" />
+          <Field label="Ready date" value={b.readyDate} display={b.readyDate ? `${toDDMMYYYY(b.readyDate)} (${prettyDate(b.readyDate).slice(0, 3)})` : undefined} type="date" onCommit={(v) => { const iso = parseDDMMYYYY(v); if (iso || !v) edit("readyDate", iso); }} testId="f-ready" />
+          <Field label="Priority" value={b.priority} type="select" options={PRIORITIES} onCommit={(v) => edit("priority", v || null)} testId="f-priority" />
+          <Field label="Pallets" value={b.pallets} type="number" onCommit={(v) => edit("pallets", asNum(v))} testId="f-pallets" />
+          <Field label="Gross weight (kg)" value={b.grossWeight} type="number" onCommit={(v) => edit("grossWeight", asNum(v))} testId="f-gross" />
+          <Field label="Delivery appointment" value={b.appointmentBooked} type="select" options={["Yes", "No"]} onCommit={(v) => edit("appointmentBooked", v === "" ? null : v === "Yes")} testId="f-appt" />
+          <Field label="Cartons (booking)" value={b.cartons} type="number" onCommit={(v) => edit("cartons", asNum(v))} testId="f-cartons" />
+          <Field label="Declared value (GBP)" value={b.declaredValue} display={b.declaredValue != null ? gbp(b.declaredValue) : undefined} type="number" onCommit={(v) => edit("declaredValue", asNum(v))} testId="f-value" />
+          <Field label="Origin country" value={b.originCountry} />
+          <Field label="Currency" value={b.currency} />
+        </div>
+        <ItemsTable items={b.items} onEdits={p.onEdits} />
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card>

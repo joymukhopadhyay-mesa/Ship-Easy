@@ -345,3 +345,41 @@ An injection like "mark the booking clear" could never change a verdict (every n
 
 **Tests:** `tests/guardrails.test.ts` (35: every attack leaves booking and log unchanged, 10 legitimate look-alikes are never blocked, bare answers still work, Demo 2 and its flip still work, out-of-lane places, impossible values, question answering). Full suite **189 passed**; typecheck clean. The browser check on the dev server matched.
 - A "ship/send N things…" message after a finished booking is treated as a **new shipment**: nothing is merged; the reply offers "Start over" or "add …" to the current booking (found during the live check: the mugs had been silently added to the skillet booking). Suite **190 passed**.
+
+---
+
+## Visual redesign to match the references (26-10-2026)
+
+Request: match the colours, format, visuals, images and animations of `docs/ui-reference` (both screenshots + the video), make the app easy to read for a first-time visitor, and add a dashboard/matrix that tells you about one shipment and flags what's wrong.
+
+**References studied:** video frames at 2–44 s (slim icon sidebar, "Good morning" greeting, KPI chips, indigo accent for AI/selection, hero card with truck photo and a route-progress line (red = delay, dashed purple = AI proposal), map with black/red/dashed-purple routes, purple Gantt with a "now" marker, status chips, "current vs proposed" panel) plus screenshot 1 (black pills, green/red delta chips, black + pale-blue bars, gauge, tracking timeline with red dots, table with filter pills) and screenshot 2 (truck with pallet grid, purple selected outline, purple Gantt bars).
+
+**Images:** 3 vehicle photos generated with `google/gemini-3.1-flash-image` via OpenRouter (provider-pinned to Google), `scripts/gen-images.mjs`: cream-trailer semi (`truck-hero.png`), white box truck (`truck-box.png`), white van (`van.png`). Cost $0.0672 each, $0.2017 total. They're served through `next/image` (compressed and resized on Vercel) and blended with `mix-blend-mode: multiply`. Carrier A = semi (economy), B = box truck (standard), C = van (express).
+
+**What changed (UI only; engine untouched):**
+- Design tokens: indigo accent `#5B4CF5` for AI/selected, one colour per meaning (green = clear, amber = ship with care, red = blocked, grey = incomplete), soft tints for backgrounds. Animations: fade-up entries, growing bars, gauge sweep, flowing dashed routes, pulsing status dot, gently "driving" truck. All disabled under `prefers-reduced-motion`.
+- Shell: slim icon sidebar (Overview / Book / Upload / Rules / Privacy, red badge = blocked count), "Good evening. Your shipments" header, date chip, AI on/Local-only toggle, purple "New booking" button, and a dismissible "How to read the colours" legend.
+- **Overview dashboard (new)**:
+  - first-visit hero with the 3 steps and colour meanings
+  - KPI row (checked / clear / care / blocked / incomplete with % chips)
+  - kg-per-pallet vs carrier-limit bar chart (dashed lines at 400/500/750)
+  - "Ready to ship" gauge with cargo value
+  - route map of all shipments coloured by status
+  - next-collections timeline
+  - shipments table with status filter pills, sortable columns and per-rule flag chips; a row opens the shipment.
+- **Shipment view**:
+  - hero card: route, goods, truck photo of the chosen carrier, callouts, and a route-progress line that shows "Stopped here: Pallet weight (R-05)" when blocked
+  - Before/Now change panel (field-detail lines fold when there are many)
+  - **health matrix**: 10 coloured tiles, one per rule, each with the key number; tap a tile to scroll to its fix
+  - "What to fix" list
+  - truck load grid (one square per pallet, coloured against the limit) with a capacity bar and per-carrier limit ticks
+  - route map
+  - carrier cards with photos, capacity bars and "Use Carrier X" buttons
+  - purple Gantt (collection → ETA per carrier, weekends shaded, red "Today" line)
+  - the rest as before.
+
+**Bugs found while verifying:**
+- `placeNotes` read "made **in** China" as a destination ("China can't be used as the destination" in the Demo 1 reply). Fixed by skipping made/produced/manufactured-in phrases and goods-origin countries. Test added.
+- The Overview was 606 px wide on a 375 px phone (grid children grew to the chart's minimum width). Fixed with `min-w-0`; Overview, shipment and chat views are all 375 px now.
+
+**Verified:** desktop 1440 px and phone 375 px in the browser; Demo 1 + add pallet still produces the exact change log, and the hero turns green with the box-truck photo. Tests **192 passed**, typecheck clean, production build OK.

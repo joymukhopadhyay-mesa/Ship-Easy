@@ -129,3 +129,15 @@ describe("a new shipment after a finished booking is not silently merged", () =>
     expect(t3.state.session.booking.items.length).toBe(2);
   });
 });
+
+describe("'made in <country>' is never mistaken for a destination", () => {
+  it("Demo 1 sentence (made in China) gets no destination warning", () => {
+    const t = say(newChat(env), "Ship 600 cast iron skillets from Birmingham to our warehouse in Hamburg, ready 02-11-2026. £18 each, 6 per carton, 2.3 kg each, HS 732393, made in China. 1,600 kg on 2 pallets. Balanced please, delivery appointment is booked.");
+    expect(t.reply).not.toMatch(/can't be used as the destination/);
+    expect(t.state.session.booking.destinationCity).toBe("Hamburg");
+  });
+  it("produced in India / made in Vietnam / in Turkey are fine; a real off-lane city still warns", () => {
+    for (const m of ["200 rugs produced in India to Paris", "300 lamps made in Vietnam to Lyon", "100 towels to Berlin, factory in Turkey"]) expect(say(newChat(env), m).reply, m).not.toMatch(/can't be used as the destination/);
+    expect(say(newChat(env), "ship 500 mugs to Madrid").reply).toMatch(/"Madrid" can't be used/);
+  });
+});

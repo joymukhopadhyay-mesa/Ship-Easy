@@ -76,6 +76,9 @@ export function placeNotes(message: string): string[] {
   let m: RegExpExecArray | null;
   while ((m = toRe.exec(message))) {
     const place = m[1];
+    // "made in China" / "produced in India" describe where goods were made, not where they go
+    if (/\b(?:made|manufactured|produced|assembled|grown|sourced|origin)\s+$/i.test(message.slice(Math.max(0, m.index - 16), m.index))) continue;
+    if (/^(?:China|India|Vietnam|Viet Nam|Turkey|Türkiye)$/i.test(place)) continue;
     if (dest.some((c) => c.toLowerCase() === place.toLowerCase())) continue;
     if (ORIGIN_CITIES.some((c) => c.toLowerCase() === place.toLowerCase())) continue;
     if (/^(?:Germany|France|Netherlands|Holland|UK|United|England|Britain|I|We|Our|The|A|My|Carrier|Warehouse|Mon|Tue|Wed|Thu|Fri|Sat|Sun|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|June|July|August|September|October|November|December|Total|Cheapest|Fastest|Balanced)$/.test(place)) continue;

@@ -3,3 +3,28 @@
 @tailwind utilities;
 
 html, body { background: #F2F3F5; color: #0B0B0C; }
+
+/* ---- motion (matches the reference video: soft fade-ups, growing bars, flowing route lines) ---- */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes growX { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes growY { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes dashFlow { to { stroke-dashoffset: -24; } }
+@keyframes pulseRing { 0% { transform: scale(.6); opacity: .7; } 100% { transform: scale(2.2); opacity: 0; } }
+@keyframes shimmer { 0% { background-position: -200px 0; } 100% { background-position: 200px 0; } }
+@keyframes drive { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+@keyframes sweep { from { stroke-dashoffset: var(--len); } to { stroke-dashoffset: var(--off); } }
+
+.anim-fade-up { animation: fadeUp .55s cubic-bezier(.2,.7,.2,1) both; }
+.anim-grow-x { transform-origin: left; animation: growX .9s cubic-bezier(.2,.7,.2,1) both; }
+.anim-grow-y { transform-origin: bottom; transform-box: fill-box; animation: growY .9s cubic-bezier(.2,.7,.2,1) both; }
+.anim-dash { stroke-dasharray: 6 6; animation: dashFlow 1.2s linear infinite; }
+.anim-pulse::after { content: ""; position: absolute; inset: 0; border-radius: 9999px; background: currentColor; animation: pulseRing 1.8s ease-out infinite; }
+.anim-shimmer { background: linear-gradient(90deg, #EFEDFE 0%, #F8F7FF 50%, #EFEDFE 100%); background-size: 400px 100%; animation: shimmer 1.4s linear infinite; }
+.anim-drive { animation: drive 2.4s ease-in-out infinite; }
+.anim-sweep { animation: sweep 1.2s cubic-bezier(.2,.7,.2,1) both; }
+.img-blend { mix-blend-mode: multiply; }
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-fade-up, .anim-grow-x, .anim-grow-y, .anim-dash, .anim-drive, .anim-sweep, .anim-shimmer { animation: none !important; }
+  .anim-pulse::after { display: none; }
+}
