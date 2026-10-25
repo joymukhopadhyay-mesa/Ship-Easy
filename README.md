@@ -5,6 +5,8 @@ A seller describes a shipment in plain language, or uploads the Bookings and Ite
 a verdict (Blocked / Ship with care / Clear to ship / Incomplete), every finding with the rule ID, severity, the numbers and a fix with a
 confidence label, a carrier recommendation for their priority with the reasoning, a plain-English confirmation, next steps, and downloads.
 
+> **Live MVP:** https://ship-easy-joy-mesa-xp.vercel.app (no login)
+>
 > **Stage 1 submission deadline:** not stated in the case files — check the submission form. The MVP link must stay live until
 > **Wednesday 28 October 2026, end of day IST**.
 

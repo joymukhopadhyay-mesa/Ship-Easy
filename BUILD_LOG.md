@@ -291,3 +291,12 @@ The build prompt is cut off inside this phase ("…invoice draft with"). I built
 ## Rename (26-10-2026)
 
 - The app is now called **Ship Easy** everywhere users see it: header, page title, truck illustration, AI fallback banners, report title and download file names (`ship-easy-booking.xlsx`, `ship-easy-report.html`), plus README/CLAUDE.md/package.json. "Pre-flight check" stays as the name of the feature. Tests 142/142, build OK.
+
+---
+
+## Deployment (26-10-2026)
+
+- Vercel team `joy-mesa-xp`, project `ship-easy` (`prj_GbeVZxYKJ47gX2l5ZkpfFMJObb9H`), linked to `joymukhopadhyay-mesa/Ship-Easy`, so pushes to `main` redeploy. Vercel Authentication / password protection is **off**, so the link opens with no login.
+- Env vars: `OPENROUTER_API_KEY` (type *sensitive*, Production + Preview, server-side only), `GEMINI_MODEL=google/gemini-3.7-flash`, `GEMINI_FALLBACK_MODEL=google/gemini-3.5-flash-lite`.
+- Production deployment `dpl_7pmgJdkXf58tkLDwLaA5LX15vD1U` from commit `63d624e`, live in about 30 s at **https://ship-easy-joy-mesa-xp.vercel.app**.
+- Live checks: `GET /` 200 (0.38 s); `/sample-bookings.xlsx` 200; `POST /api/chat` returns a real patch from `google/gemini-3.7-flash`; the key appears 0 times in the page HTML. Browser on the live URL (AI mode): header "Ship Easy"; Demo 1 + add pallet → the exact Demo 1 log, BLOCKED → CLEAR TO SHIP; Load sample → `23 rows read, 20 validated, 1 unmatched, 2 incomplete`; hazard and explain calls OK (one batched explain for the upload, $0.0101); AI narrative shown on BK-102; no banner, no console errors.
