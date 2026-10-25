@@ -157,9 +157,13 @@ export function extractLocal(message: string, ctx: ExtractContext): Patch {
   if (date) p.set.readyDate = sv(date.iso, date.source);
   let masked = date ? msg.replace(date.source, " ".repeat(date.source.length)) : msg;
 
-  for (const city of Object.keys(DESTINATION_CITIES)) {
-    if ((m = new RegExp(String.raw`\b${city}\b`, "i").exec(msg))) { p.set.destinationCity = sv(city, m[0]); break; }
-  }
+  // destination: a listed city that isn't the "from" place; prefer one after "to/in/into/for"
+  const cityHits = Object.keys(DESTINATION_CITIES).flatMap((city) => {
+    const mm = new RegExp(String.raw`\b${city}\b`, "i").exec(msg);
+    return mm ? [{ city, src: mm[0], before: msg.slice(Math.max(0, mm.index - 25), mm.index).toLowerCase() }] : [];
+  }).filter((h) => !/\bfrom\s+$/.test(h.before));
+  const destHit = cityHits.find((h) => /\b(?:to|in|into|for)\s+(?:a |our |their |the )?(?:warehouse |shop |store |office )?(?:in )?$/.test(h.before)) ?? cityHits[0];
+  if (destHit) p.set.destinationCity = sv(destHit.city, destHit.src);
   for (const city of ORIGIN_CITIES) {
     if ((m = new RegExp(String.raw`\b${city}\b`, "i").exec(msg))) { p.set.originCity = sv(city, m[0]); break; }
   }

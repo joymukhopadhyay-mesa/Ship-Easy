@@ -50,6 +50,8 @@ export const PatchSchema = z.object({
   questions_answered: z.array(z.string()).default([]),
   /** Option key chosen for a pending multiple-choice question (e.g. "b"). */
   choice: z.object({ value: z.string(), source: z.string() }).nullable().optional(),
+  /** The model's view of what the message is (booking / off_topic / injection / prohibited / question). */
+  intent: z.string().nullable().optional(),
   /** Fields the seller explicitly declined ("don't know the HS code"). */
   declined: z.array(z.object({ field: z.string(), sku: z.string().nullable().optional(), source: z.string() })).default([]),
 });

@@ -3,10 +3,11 @@
 // what it may, never authors an R-03 error, and asks at most 3 grouped questions per turn.
 import { canonicalCity, DESTINATION_CITIES, normaliseCountry, ORIGIN_CITIES, PRIORITIES } from "./config";
 import { isIsoDate, prettyDate } from "./dates";
-import { carrierReason, VERDICT_TEXT } from "./explain";
+import { carrierReason, fixText, VERDICT_TEXT } from "./explain";
+import { implausible, implausibleDate, placeNotes, screenMessage } from "./guard";
 import { fmtNum, gbp, kg } from "./format";
 import type { Slot } from "./localExtract";
-import { sanitisePatch, type Patch, type Rejection } from "./patch";
+import { emptyPatch, sanitisePatch, type Patch, type Rejection } from "./patch";
 import { applyEdits, newSession, revalidate, type Capture, type Edit, type Session } from "./session";
 import type { Booking, CarrierId, DestinationType, Env, Item, Priority } from "./types";
 
@@ -143,8 +144,14 @@ const num = (v: unknown): number | null => {
 };
 
 /** Converts a sanitised patch into session edits (+ item adds/removes). */
-function patchToEdits(st: ChatState, p: Patch): { edits: Edit[]; booking: Booking; nextRow: number; notes: string[]; declined: string[] } {
+function patchToEdits(st: ChatState, p: Patch, today: string): { edits: Edit[]; booking: Booking; nextRow: number; notes: string[]; declined: string[] } {
   const notes: string[] = [];
+  /** Guardrail: values that can't be real are not used; the question is simply asked again. */
+  const sane = (field: string, v: number, source: string) => {
+    const why = implausible(field, v);
+    if (why) notes.push(`I didn't use "${source}": ${why}.`);
+    return !why;
+  };
   const booking: Booking = { ...st.session.booking, items: st.session.booking.items.map((i) => ({ ...i })) };
   const edits: Edit[] = [];
   let nextRow = st.nextRow;
@@ -168,7 +175,8 @@ function patchToEdits(st: ChatState, p: Patch): { edits: Edit[]; booking: Bookin
         break;
       }
       case "readyDate":
-        if (isIsoDate(value)) {
+        if (isIsoDate(value) && implausibleDate(value, today)) notes.push(`I didn't use "${source}" as the ready date: ${implausibleDate(value, today)}.`);
+        else if (isIsoDate(value)) {
           edits.push({ path: "readyDate", value });
           notes.push(/\d{1,2}[-/.]\d{1,2}[-/.]\d{4}/.test(source) ? `Ready on ${prettyDate(value)}.` : `I've read "${source}" as ${prettyDate(value)}; tell me if you meant another day.`);
         }
@@ -182,12 +190,12 @@ function patchToEdits(st: ChatState, p: Patch): { edits: Edit[]; booking: Bookin
         const cur = booking.pallets ?? 0;
         const rel = typeof value === "string" && /^[+-]\d+$/.test(value) ? cur + Number(value) : null;
         const v = rel ?? num(value);
-        if (v != null && v >= 0) edits.push({ path: "pallets", value: v });
+        if (v != null && sane("pallets", v, source)) edits.push({ path: "pallets", value: v });
         break;
       }
       case "grossWeight": {
         const v = num(value);
-        if (v != null && v >= 0) edits.push({ path: "grossWeight", value: v });
+        if (v != null && sane("grossWeight", v, source)) edits.push({ path: "grossWeight", value: v });
         break;
       }
       case "appointmentBooked":
@@ -218,12 +226,12 @@ function patchToEdits(st: ChatState, p: Patch): { edits: Edit[]; booking: Bookin
       booking.items.push(fresh);
       target = fresh;
     }
-    for (const [f, { value }] of Object.entries(it.fields)) {
+    for (const [f, { value, source }] of Object.entries(it.fields)) {
       if (f === "description") { if (value) edits.push({ path: "item.description", rowId: target.rowId, value: String(value) }); continue; }
       if (f === "hsCode") { edits.push({ path: "item.hsCode", rowId: target.rowId, value: value == null ? null : String(value) }); continue; }
       if (f === "countryOfOrigin") { edits.push({ path: "item.countryOfOrigin", rowId: target.rowId, value: normaliseCountry(String(value ?? "")) }); continue; }
       const v = num(value);
-      if (v != null && v >= 0) edits.push({ path: `item.${f}` as Edit["path"], rowId: target.rowId, value: v });
+      if (v != null && sane(f, v, source)) edits.push({ path: `item.${f}` as Edit["path"], rowId: target.rowId, value: v });
     }
   }
   for (const d of p.declined) {
@@ -233,6 +241,25 @@ function patchToEdits(st: ChatState, p: Patch): { edits: Edit[]; booking: Bookin
   return { edits, booking, nextRow, notes, declined };
 }
 
+/** Short follow-up while the carton question is open (never the identical question again). */
+function stuckPrompt(st: ChatState): string {
+  const nd = st.pending!;
+  const desc = st.session.booking.items.find((i) => i.rowId === nd.rowId)?.description ?? nd.sku;
+  return `I still need to know how the ${fmtNum(nd.quantity)} ${desc} are packed before I can work out the cartons: reply (a), (b) or (c), or tell me the real carton count (for example "90 cartons").`;
+}
+
+/** "Why is it blocked?" — answered from the computed findings, never invented. */
+function answerQuestion(st: ChatState): string {
+  const res = st.session.result;
+  const fails = res.rules.filter((r) => r.status === "fail").sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "Red" ? -1 : 1));
+  if (!fails.length) return res.verdict === "INCOMPLETE" ? `It's still incomplete: ${res.gate.map((g) => g.message).join(" ")}` : `${VERDICT_TEXT[res.verdict]} ${carrierReason(res.carrier).reason}`;
+  const lines = fails.slice(0, 3).map((r) => {
+    const rep = res.repairs.find((p) => p.rules.includes(r.id));
+    return `${r.id} (${r.severity}): ${r.message} Fix: ${rep ? rep.message : fixText(r, res)}`;
+  });
+  return `${VERDICT_TEXT[res.verdict]} ${lines.join(" ")}${fails.length > 3 ? ` (+${fails.length - 3} more on the card.)` : ""}`;
+}
+
 export function isComplete(st: ChatState): boolean {
   return !st.pending && nextQuestions(st).slots.length === 0;
 }
@@ -240,6 +267,19 @@ export function isComplete(st: ChatState): boolean {
 /** One conversational turn. `stamp` = Europe/London "DD-MM-YYYY HH:mm" (injected). */
 export function chatTurn(st0: ChatState, rawPatch: Patch, message: string, env: Env, stamp: string): TurnResult {
   const { patch, rejected } = sanitisePatch(rawPatch, message);
+  // ---- Guardrails: decide whether this is a booking message at all, BEFORE merging anything.
+  const extracted = Object.keys(patch.set).length > 0 || patch.items.length > 0 || Boolean(patch.choice) || patch.declined.length > 0;
+  const screen = screenMessage(message, { extracted, expecting: st0.expecting, hasBooking: st0.session.booking.items.length > 0, modelIntent: rawPatch.intent ?? null });
+  if (screen.intent !== "booking") {
+    const fresh = st0.turns === 0 && st0.session.booking.items.length === 0;
+    const again = fresh ? 'Tell me what you\'re shipping, how many and where to — for example "600 cast iron skillets to a warehouse in Hamburg".' : st0.pending ? stuckPrompt(st0) : nextQuestions(st0).text.length ? nextQuestions(st0).text.map((t, k, a) => (a.length > 1 ? `(${k + 1}) ${t}` : t)).join(" ") : "";
+    let reply: string;
+    if (screen.intent === "question") reply = answerQuestion(st0);
+    else if (screen.reply) reply = st0.turns > 0 && again ? `${screen.reply} Back to your booking: ${again}` : screen.reply;
+    else if (st0.pending) reply = again;
+    else reply = again ? `I couldn't find any shipment details in that. ${again}` : "I couldn't find anything to change in that. Tell me what to update — for example a new pallet count, weight, date or priority.";
+    return { state: st0, reply, rejected, applied: emptyPatch() };
+  }
   let st: ChatState = { ...st0, turns: st0.turns + 1 };
   const notes: string[] = [];
   const firstTurn = st0.turns === 0;
@@ -266,8 +306,8 @@ export function chatTurn(st0: ChatState, rawPatch: Patch, message: string, env: 
   }
 
   let stuck = false;
-  const conv = patchToEdits(st, patch);
-  notes.push(...conv.notes);
+  const conv = patchToEdits(st, patch, env.today);
+  notes.push(...placeNotes(message), ...conv.notes);
   const s1 = { ...st.session, booking: conv.booking };
   const before = st.session;
   const { session, changes } = applyEdits(s1, conv.edits, "chat", env, stamp, true, { captureOf: (bk) => captureFor(bk, conv.declined) });
@@ -324,7 +364,7 @@ export function chatTurn(st0: ChatState, rawPatch: Patch, message: string, env: 
     st = { ...st, expecting: [{ field: "choice", rowId: nd.rowId, sku: nd.sku }] };
     const desc = b.items.find((i) => i.rowId === nd.rowId)?.description ?? nd.sku;
     reply = stuck
-      ? [...notes, `I still need to know how the ${fmtNum(nd.quantity)} ${desc} are packed before I can work out the cartons: reply (a), (b) or (c), or tell me the real carton count (for example "90 cartons").`].join(" ")
+      ? [...notes, stuckPrompt(st)].join(" ")
       : [...notes, nonDivisiblePrompt(nd)].join(" ");
   } else {
     const q = nextQuestions(st);

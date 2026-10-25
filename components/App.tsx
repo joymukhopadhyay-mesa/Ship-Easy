@@ -339,7 +339,7 @@ export default function App({ today }: { today: string }) {
             </div>
             <div className="border-t border-line p-4">
               <div className="mb-2 flex flex-wrap gap-1.5">
-                {!msgs.some((m) => m.role === "user") && EXAMPLES.map((e) => <button key={e.label} data-testid={e.testId} onClick={() => send(e.text, resetChat(`Example: ${e.label}`))} className="rounded-full bg-[#F4F5F7] px-2.5 py-1 text-[11px] font-medium hover:bg-zinc-200">{e.label}</button>)}
+                {chat.session.log.length === 0 && EXAMPLES.map((e) => <button key={e.label} data-testid={e.testId} onClick={() => send(e.text, resetChat(`Example: ${e.label}`))} className="rounded-full bg-[#F4F5F7] px-2.5 py-1 text-[11px] font-medium hover:bg-zinc-200">{e.label}</button>)}
                 {chat.baselined && <button data-testid="chip-add-pallet" onClick={() => send("add another pallet")} className="rounded-full bg-ink px-2.5 py-1 text-[11px] font-semibold text-white">+ add another pallet</button>}
               </div>
               <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); send(input); }}>

@@ -57,6 +57,7 @@ describe("model client (OpenRouter, Google models only) degrades, never throws",
 describe("model output is still guarded by the allow-list and source check", () => {
   it("a hallucinated value and a forbidden field are dropped", () => {
     const out = ChatOut.parse({
+      intent: "booking",
       set: [{ field: "pallets", value: "+1", source: "add another pallet" }, { field: "grossWeight", value: "2000", source: "2 tonnes" }, { field: "declaredValue", value: "9", source: "pallet" }],
       items: [], choice: "", choice_source: "", declined: [], questions_answered: [],
     });
