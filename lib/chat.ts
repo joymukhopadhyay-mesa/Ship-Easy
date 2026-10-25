@@ -280,6 +280,18 @@ export function chatTurn(st0: ChatState, rawPatch: Patch, message: string, env: 
     else reply = again ? `I couldn't find any shipment details in that. ${again}` : "I couldn't find anything to change in that. Tell me what to update — for example a new pallet count, weight, date or priority.";
     return { state: st0, reply, rejected, applied: emptyPatch() };
   }
+  // A fresh "ship/send N things…" after a finished booking is a NEW shipment: ask, don't silently merge it.
+  const looksNew = /^\s*(?:(?:i|we)(?:'m|'re| am| are| need to| want to| would like to)?\s+)?(?:ship|send|sending|shipping|export|book)\b/i.test(message);
+  const saysAdd = /\b(?:add|also|plus|as well|another|extra|include|too|same booking)\b/i.test(message);
+  if (st0.baselined && looksNew && !saysAdd && patch.items.some((i) => i.op === "add")) {
+    const cur = st0.session.booking;
+    return {
+      state: st0,
+      reply: `You already have a booking for ${cur.items.map((i) => i.description).join(", ")} to ${cur.destinationCity ?? "your destination"}. To book this as a separate shipment, press "Start over" (download this one first if you need it). To add these goods to the current booking instead, say "add ${message.replace(/^\s*(?:(?:i|we)\S*\s+)?(?:need to |want to )?(?:ship|send|sending|shipping|export|book)\s+/i, "").slice(0, 60)}".`,
+      rejected,
+      applied: emptyPatch(),
+    };
+  }
   let st: ChatState = { ...st0, turns: st0.turns + 1 };
   const notes: string[] = [];
   const firstTurn = st0.turns === 0;

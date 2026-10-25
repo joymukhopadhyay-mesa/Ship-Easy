@@ -117,3 +117,14 @@ describe("questions are answered from the computed findings", () => {
     expect(t2.state.session.booking).toEqual(t1.state.session.booking);
   });
 });
+
+describe("a new shipment after a finished booking is not silently merged", () => {
+  it('"ship 500 mugs to Madrid" asks first and changes nothing; "add 500 mugs" adds', () => {
+    const t1 = say(newChat(env), DEMO2);
+    const t2 = say(t1.state, "ship 500 mugs to Madrid");
+    expect(t2.state.session.booking).toEqual(t1.state.session.booking);
+    expect(t2.reply).toMatch(/You already have a booking for wooden chopping boards to Frankfurt/);
+    const t3 = say(t1.state, "add 500 ceramic mugs, £5 each, 10 per carton");
+    expect(t3.state.session.booking.items.length).toBe(2);
+  });
+});
