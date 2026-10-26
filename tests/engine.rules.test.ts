@@ -187,7 +187,12 @@ describe("carriers and dates", () => {
     const opts = c.options;
     const w = c.weights;
     expect(rank(opts, "Cheapest", w)[0].id).toBe("A");
-    expect(rank(opts, "Fastest", w)[0].id).toBe("C");
+    // Thursday ready: B (3d) and C (2d) both roll to Mon 9 Nov -> same delivery, cheaper B wins (teammate round 3)
+    expect(opts.find((o) => o.id === "B")!.eta).toBe(opts.find((o) => o.id === "C")!.eta);
+    expect(rank(opts, "Fastest", w)[0].id).toBe("B");
+    // Monday ready: C really arrives first (Wed vs Thu) -> C
+    const mon = evaluateCarriers(booking({ grossWeight: 600, readyDate: "2026-11-02" })).options;
+    expect(rank(mon, "Fastest", w)[0].id).toBe("C");
     expect(rank(opts, "Most reliable", w)[0].id).toBe("C");
     expect(balancedScores(opts, { cost: 1, transit: 0, reliability: 0 }).find((r) => r.id === "A")!.score).toBe(0);
     expect(rank(opts, "Balanced", { cost: 0, transit: 1, reliability: 0 })[0].id).toBe("C");
@@ -209,7 +214,8 @@ describe("carriers and dates", () => {
   });
 
   it("Demo 2: 3 pallets -> B £660, 4 pallets -> C £1,360", () => {
-    const d2 = (p: number) => evaluateCarriers(booking({ grossWeight: 1260, pallets: p, priority: "Fastest" }));
+    // ready Mon 02-11-2026 as in fixture f19 (the spec's Demo 2 dates: B Thu 5 Nov, C Wed 4 Nov)
+    const d2 = (p: number) => evaluateCarriers(booking({ grossWeight: 1260, pallets: p, priority: "Fastest", readyDate: "2026-11-02" }));
     expect([d2(3).feasible, d2(3).chosen]).toEqual([["A", "B"], "B"]);
     expect([d2(4).chosen, d2(4).options.find((o) => o.id === "C")!.totalCost]).toEqual(["C", 1360]);
   });

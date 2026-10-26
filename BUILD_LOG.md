@@ -383,3 +383,19 @@ Request: match the colours, format, visuals, images and animations of `docs/ui-r
 - The Overview was 606 px wide on a 375 px phone (grid children grew to the chart's minimum width). Fixed with `min-w-0`; Overview, shipment and chat views are all 375 px now.
 
 **Verified:** desktop 1440 px and phone 375 px in the browser; Demo 1 + add pallet still produces the exact change log, and the hero turns green with the box-truck photo. Tests **192 passed**, typecheck clean, production build OK.
+
+---
+
+## Teammate test round 3 (26-10-2026)
+
+| # | Problem | Reproduced | Fix |
+|---|---|---|---|
+| 10 | A message typed while the bot was "Checking…" vanished ("make it Rotterdam" then "no wait, Berlin") | UI race: sends were ignored while busy | Messages typed while busy appear at once marked "Queued — I'll read this next" and run in order, each against the booking left by the previous turn. "Start over" or an example chip discards anything still queued or running. The Send button reads "Queue" while busy. Real model, dev server: both messages answered, final destination Berlin, change log Frankfurt → Rotterdam → Berlin. |
+| 11 | "Fastest" paid £120–£240 more for the same Monday delivery | Ready Thu 5 Nov: B (3d) and C (2d) both roll to Mon 9 Nov, and C was chosen | **Fastest now ranks by real delivery date (ETA); ties go to the cheaper carrier**, then transit, then on-time. Without dates it falls back to the spec order. The reason says "earliest delivery, Mon 9 Nov 2026 (Carrier C is quicker on the road but arrives the same day after the weekend, for more money)". The change log and runner-up text compare delivery days, so "faster" is never claimed for the same arrival day. |
+| 12 | Gross weight went stale after removing a product (400 kg left for 60 kg of goods) | Seller-stated weight was kept | In chat, adding or removing a product without restating the weight clears the old gross weight and asks again, with the new goods-only weight as an anchor ("the old gross weight (400 kg) no longer fits the goods… check the pallet count"). A weight given in the same message is kept. |
+| 13 | Local-only: number-word products dropped, products couldn't be removed, USD prices ignored silently | All three | Number words ("five hundred", "a dozen", "two thousand five hundred", "twenty-four", "half a dozen"), with word boundaries so "tennis balls" isn't read as "ten". Removals ("remove the bowls", "drop…", "no longer sending…"). Non-GBP prices ($, €, USD, EUR, "dollars") are never used, and the reply says "Prices must be in pounds (GBP)…". A model patch whose price source is in $/€ is refused too. **Every item op, including remove, now needs a field quoting the seller's words** (sanitisePatch), so a model can't remove items silently. |
+| small | One question per turn when several fields were missing | Questions came from only the first incomplete group | Up to 3 questions per turn, taken in group order and filled from the next groups (items still one product at a time). |
+| small | "1 checks passed", "1 pallets" | — | `plural()` used for every count that can be 1 (checks, pallets, cartons, units, days); it also formats thousands. |
+
+- **Spec change (from the user, via this test round):** the prompt said "Fastest = transit (tie: on-time, then cost)". The user now wants Fastest to mean the earliest actual delivery. Two engine tests that encoded the old order with a Thursday ready date were updated. A Monday-ready case was added so the spec's Demo 2 numbers stay locked (C at £1,360, +£700, 1 day faster); fixture f19 and the oracle are unchanged and still agree. Two chat tests were updated to the new 3-question sequence.
+- Tests: `tests/feedback3.test.ts` (12 new). Suite **205 passed**, oracle agrees, typecheck clean.

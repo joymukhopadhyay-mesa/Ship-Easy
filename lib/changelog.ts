@@ -61,7 +61,8 @@ export function diffLines(prev: BookingResult, next: BookingResult, changes: Fie
       const extra: string[] = [];
       const dc = (ob.totalCost ?? 0) - (oa.totalCost ?? 0);
       if (dc !== 0) extra.push(`${dc > 0 ? "+" : "-"}${gbpText(Math.abs(dc))}`);
-      const dt = ob.transitDays - oa.transitDays;
+      // compare real delivery days (weekend roll-over), falling back to transit days
+      const dt = oa.eta && ob.eta ? Math.round((Date.parse(ob.eta) - Date.parse(oa.eta)) / 86400000) : ob.transitDays - oa.transitDays;
       if (dt !== 0) extra.push(`${plural(Math.abs(dt), "day")} ${dt < 0 ? "faster" : "slower"}`);
       if (extra.length) line += ` ${extra.join(", ")}`;
     }

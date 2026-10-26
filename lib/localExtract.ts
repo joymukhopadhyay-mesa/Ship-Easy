@@ -21,6 +21,26 @@ export interface ExtractContext {
 
 const NUM = String.raw`\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?`;
 const toNum = (s: string) => Number(s.replace(/,/g, ""));
+
+// Number words ("five hundred", "a dozen", "two thousand five hundred", "twenty-four").
+const UNITS: Record<string, number> = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
+const W = "zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|dozen";
+const WORDNUM = String.raw`(?:(?:a|an)\s+(?:hundred|thousand|dozen)\b|half\s+a\s+dozen\b|(?:${W})\b)(?:[\s-]+(?:and[\s-]+)?(?:${W})\b)*`;
+export function wordsToNumber(s: string): number | null {
+  const t = s.toLowerCase().replace(/-/g, " ").replace(/\band\b/g, " ").trim().split(/\s+/);
+  if (t.join(" ") === "half a dozen") return 6;
+  let total = 0, cur = 0, seen = false;
+  for (const w of t) {
+    if (w === "a" || w === "an") { cur = cur || 1; continue; }
+    if (w in UNITS) { cur += UNITS[w]; seen = true; }
+    else if (w === "dozen") { cur = (cur || 1) * 12; seen = true; }
+    else if (w === "hundred") { cur = (cur || 1) * 100; seen = true; }
+    else if (w === "thousand") { total += (cur || 1) * 1000; cur = 0; seen = true; }
+    else return null;
+  }
+  return seen ? total + cur : null;
+}
+const anyNum = (s: string) => (/^[\d,.]+$/.test(s) ? toNum(s) : wordsToNumber(s));
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 const DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
@@ -91,13 +111,13 @@ const ORIGINS: [RegExp, string][] = [
   [/\b(?:germany|german)\b/i, "Germany"],
 ];
 
-const NOT_ITEM = /^(?:units?\s*$|pcs\s*$|pieces?\s*$|of them\s*$|pallets?|cartons?|boxes|box|cases?|kg|kgs|kilos?|kilograms?|tonnes?|g|grams?|units?\s+(?:per|a|in|to)|per\b|a carton|to a|days?|weeks?|hours?|percent|%|gbp|pounds?|each|of them|in total|total|items?\b|skus?\b|products?\b|lines?\b|dollars?|euros?|am|pm|st|nd|rd|th|x\s*\d)/i;
+const NOT_ITEM = /^(?:units?\s*$|pcs\s*$|pieces?\s*$|of them\s*$|more\b|extra\b|another\b|less\b|fewer\b|of\b|quotes?\b|prices?\b|bookings?\b|shipments?\b|deliver(?:y|ies)\b|collections?\b|questions?\b|things?\b|times?\b|pallets?|cartons?|boxes|box|cases?|kg|kgs|kilos?|kilograms?|tonnes?|g|grams?|units?\s+(?:per|a|in|to)|per\b|a carton|to a|days?|weeks?|hours?|percent|%|gbp|pounds?|each|of them|in total|total|items?\b|skus?\b|products?\b|lines?\b|dollars?|euros?|am|pm|st|nd|rd|th|x\s*\d)/i;
 const STOP = String.raw`(?=\s*(?:,|;|\.(?:\s|$)|$|\bat\b|\bto\b|\bfrom\b|\bfor\b|@|\beach\b|\bpriced\b|\bcosting\b|\bcost\b|\bin\b|\bpacked\b|\bwith\b|\bthat\b|\bwhich\b|\bmade\b|\bweigh|\(|£|\band\b|\bplus\b|\bready\b|\bgoing\b|\bheading\b|\bon\b|\bvia\b|\bby\b|\bcollect|\bhs\b|\bshipping\b|\bsent\b|\bneed\b|-))`;
 
 interface ItemHit { start: number; end: number; qty: number; qtySrc: string; desc: string; descSrc: string }
 
 function findItems(msg: string, masked: string): ItemHit[] {
-  const re = new RegExp(String.raw`(?<![£\d.,:/-])(${NUM})\s*(?:x\s+|units?\s+of\s+|pieces?\s+of\s+|pcs\s+(?:of\s+)?|packs?\s+of\s+)?([a-zA-Z][a-zA-Z0-9'’\- ]*?)${STOP}`, "gi");
+  const re = new RegExp(String.raw`(?<![£$€\d.,:/-])\b(${NUM}|${WORDNUM})\s*(?:x\s+|units?\s+of\s+|pieces?\s+of\s+|pcs\s+(?:of\s+)?|packs?\s+of\s+)?([a-zA-Z][a-zA-Z0-9'’\- ]*?)${STOP}`, "gi");
   const out: ItemHit[] = [];
   let m: RegExpExecArray | null;
   while ((m = re.exec(masked))) {
@@ -105,8 +125,10 @@ function findItems(msg: string, masked: string): ItemHit[] {
     if (!desc || NOT_ITEM.test(desc) || desc.length < 3) continue;
     const before = masked.slice(Math.max(0, m.index - 10), m.index);
     if (/\b(?:hs|code|no\.?|number)\s*(?:is|:|#)?\s*$/i.test(before)) continue;
+    const qty = anyNum(m[1]);
+    if (qty == null) continue;
     const descStart = m.index + m[0].indexOf(m[2]);
-    out.push({ start: m.index, end: m.index + m[0].length, qty: toNum(m[1]), qtySrc: msg.slice(m.index, descStart + desc.length), desc, descSrc: msg.slice(descStart, descStart + desc.length) });
+    out.push({ start: m.index, end: m.index + m[0].length, qty, qtySrc: msg.slice(m.index, descStart + desc.length), desc, descSrc: msg.slice(descStart, descStart + desc.length) });
   }
   return out;
 }
@@ -117,7 +139,7 @@ function itemAttrs(seg: string): Record<string, SourcedValueT> {
   let m: RegExpExecArray | null;
   if ((m = new RegExp(String.raw`£\s?(${NUM})(?!\s*(?:in total|total|declared|altogether|overall|for the lot|for everything))`, "i").exec(seg))) f.unitPrice = sv(toNum(m[1]), m[0]);
   else if ((m = new RegExp(String.raw`\b(${NUM})\s*(?:gbp|pounds?|quid)\s*(?:each|per unit|a unit|apiece|per item|a piece)`, "i").exec(seg))) f.unitPrice = sv(toNum(m[1]), m[0]);
-  if ((m = new RegExp(String.raw`\b(\d+)\s*(?:units?\s*|pcs\s*|pieces\s*)?(?:per|a|to a|in a|in each|in every|/)\s*(?:carton|box|case|ctn)\b`, "i").exec(seg))) f.unitsPerCarton = sv(Number(m[1]), m[0]);
+  if ((m = new RegExp(String.raw`\b(\d+|${WORDNUM})\s*(?:units?\s*|pcs\s*|pieces\s*)?(?:per|a|to a|in a|in each|in every|/)\s*(?:carton|box|case|ctn)\b`, "i").exec(seg)) && anyNum(m[1]) != null) f.unitsPerCarton = sv(anyNum(m[1])!, m[0]);
   else if ((m = /\b(?:cartons?|boxes|cases)\s+of\s+(\d+)\b/i.exec(seg))) f.unitsPerCarton = sv(Number(m[1]), m[0]);
   if ((m = new RegExp(String.raw`\b(${NUM})\s+(?:cartons|boxes|cases)\b(?!\s+of)`, "i").exec(seg))) f.cartons = sv(toNum(m[1]), m[0]);
   if ((m = new RegExp(String.raw`\b(${NUM})\s*(kg|kgs|kilos?|kilograms?|g|grams?)\s*(?:each|per unit|apiece|a piece|per item|per piece|a unit|per [a-z]+)\b`, "i").exec(seg))) {
@@ -174,8 +196,8 @@ export function extractLocal(message: string, ctx: ExtractContext): Patch {
   if ((m = /\b(?:add|plus)\s+(\d+)\s+(?:more\s+|extra\s+)?pallets?\b/i.exec(msg))) p.set.pallets = sv(`+${m[1]}`, m[0]);
   else if ((m = /\b(?:add(?:ing)?\s+(?:a|an|one|another)(?:\s+more|\s+extra)?|another|one more|an extra|extra)\s+pallet\b/i.exec(msg))) p.set.pallets = sv("+1", m[0]);
   else if ((m = /\b(?:remove|drop|take off|lose)\s+(?:a|one)\s+pallet\b|\bone (?:less|fewer) pallet\b/i.exec(msg))) p.set.pallets = sv("-1", m[0]);
-  else if ((m = new RegExp(String.raw`\b(\d+)\s*pallets?\b`, "i").exec(masked))) p.set.pallets = sv(Number(m[1]), msg.slice(m.index, m.index + m[0].length));
-  if (p.set.pallets) masked = masked.replace(/\b\d+\s*pallets?\b/i, (s) => " ".repeat(s.length));
+  else if ((m = new RegExp(String.raw`\b(\d+|${WORDNUM})\s*pallets?\b`, "i").exec(masked)) && anyNum(m[1]) != null) p.set.pallets = sv(anyNum(m[1])!, msg.slice(m.index, m.index + m[0].length));
+  if (p.set.pallets) masked = masked.replace(new RegExp(String.raw`\b(?:\d+|${WORDNUM})\s*pallets?\b`, "i"), (s) => " ".repeat(s.length));
 
   // Gross weight: a kg figure that is NOT "each/per unit".
   const grossRe = new RegExp(String.raw`\b(${NUM})\s*(kg|kgs|kilos?|kilograms?|tonnes?|t)\b(?!\s*(?:each|per|apiece|a piece|a unit))`, "gi");
@@ -198,6 +220,15 @@ export function extractLocal(message: string, ctx: ExtractContext): Patch {
   else if ((m = /\b(?:use|go back to|switch back to)\s+the\s+recommended(?:\s+carrier)?\b/i.exec(msg))) p.set.chosenCarrier = sv(null, m[0]);
 
   if ((m = /\b(?:seller|company|business)(?:\s+name)?\s*(?:is|:)\s*([A-Z][\w&'.-]*(?:\s+[A-Z&][\w&'.-]*){0,4})/.exec(msg))) p.set.sellerName = sv(m[1], m[1]);
+
+  // Removals: "remove the bowls", "drop the mugs", "we're no longer sending the lamps".
+  const rem = /\b(?:remove|drop|delete|take out|cancel|scrap|get rid of|forget(?: about)?|no longer (?:need|sending|shipping|send|ship)|don'?t (?:need|send|ship))\s+(?:the\s+|all\s+(?:the\s+)?|my\s+|those\s+|these\s+|any\s+)?([a-z][a-z' -]{1,40}?)(?=\s*(?:[.,;!?]|$|\bfrom\b|\bplease\b|\bline\b|\bitems?\b|\btoo\b|\band\b|\bafter all\b))/i.exec(msg);
+  if (rem && !/pallet/i.test(rem[1])) {
+    const stem = (w: string) => w.toLowerCase().replace(/(?:es|s)$/, "");
+    const words = rem[1].split(/[\s-]+/).map(stem).filter((w) => w.length > 2);
+    const hit = ctx.items.find((i) => { const d = i.description.split(/[\s,-]+/).map(stem); return words.some((w) => d.includes(w)); });
+    if (hit) { p.items.push({ op: "remove", sku: hit.sku, fields: { description: sv(hit.description, rem[0]) } }); return p; }
+  }
 
   // Items: "1,000 ceramic mugs ..." splits the message into item segments.
   const hits = findItems(msg, masked);

@@ -100,7 +100,7 @@ export const RULES: Rule[] = [
     check(ctx) {
       if (ctx.noItems) return notChecked("the booking has no items");
       const bad = ctx.usable.cartonMaths.filter((i) => i.unitsPerCarton! * i.cartons! !== i.quantity!);
-      const numbers = bad.map((i) => `${i.sku}: ${fmtNum(i.unitsPerCarton)} per carton × ${fmtNum(i.cartons)} cartons = ${fmtNum(i.unitsPerCarton! * i.cartons!)}, but quantity is ${fmtNum(i.quantity)}`);
+      const numbers = bad.map((i) => `${i.sku}: ${fmtNum(i.unitsPerCarton)} per carton × ${plural(i.cartons!, "carton")} = ${fmtNum(i.unitsPerCarton! * i.cartons!)}, but quantity is ${fmtNum(i.quantity)}`);
       if (bad.length) return { status: "fail", message: `Carton maths does not add up for ${bad.map((i) => label(ctx, i.rowId)).join("; ")}.`, numbers, itemRowIds: bad.map((i) => i.rowId) };
       if (ctx.excluded.cartonMaths.length) return notChecked(`${plural(ctx.excluded.cartonMaths.length, "item")} missing quantity, units per carton or cartons`);
       return { status: "pass", message: "Units per carton × cartons equals quantity for every item." };
@@ -116,7 +116,7 @@ export const RULES: Rule[] = [
       const sum = ctx.sums.cartons;
       const numbers = [`Sum of item cartons = ${ctx.usable.cartons.map((i) => fmtNum(i.cartons)).join(" + ")} = ${fmtNum(sum)}`, `Booking says ${fmtNum(bc)}`];
       if (sum === bc) return { status: "pass", message: "Booking cartons equal the sum of item cartons.", numbers };
-      return { status: "fail", message: `Booking says ${fmtNum(bc)} cartons but the items add up to ${fmtNum(sum)}.`, numbers };
+      return { status: "fail", message: `Booking says ${plural(bc, "carton")} but the items add up to ${fmtNum(sum)}.`, numbers };
     },
   },
   {

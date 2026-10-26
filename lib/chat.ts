@@ -4,8 +4,8 @@
 import { canonicalCity, DESTINATION_CITIES, normaliseCountry, ORIGIN_CITIES, PRIORITIES } from "./config";
 import { isIsoDate, prettyDate } from "./dates";
 import { carrierReason, fixText, VERDICT_TEXT } from "./explain";
-import { implausible, implausibleDate, placeNotes, screenMessage } from "./guard";
-import { fmtNum, gbp, kg } from "./format";
+import { currencyNote, implausible, implausibleDate, placeNotes, screenMessage } from "./guard";
+import { fmtNum, gbp, kg, plural } from "./format";
 import type { Slot } from "./localExtract";
 import { emptyPatch, sanitisePatch, type Patch, type Rejection } from "./patch";
 import { applyEdits, newSession, revalidate, type Capture, type Edit, type Session } from "./session";
@@ -63,15 +63,15 @@ export function nonDivisibleOptions(it: Item): NonDivisible | null {
   if (q == null || !u || q % u === 0) return null;
   const lo = Math.floor(q / u), hi = Math.ceil(q / u), r = q - lo * u;
   const options: NonDivisible["options"] = [];
-  if (lo > 0) options.push({ key: "a", label: `${fmtNum(lo * u)} units in ${fmtNum(lo)} cartons`, lines: [{ quantity: lo * u, cartons: lo, unitsPerCarton: u }] });
-  options.push({ key: "b", label: `${fmtNum(hi * u)} units in ${fmtNum(hi)} cartons`, lines: [{ quantity: hi * u, cartons: hi, unitsPerCarton: u }] });
-  if (lo > 0) options.push({ key: "c", label: `keep ${fmtNum(q)} as ${fmtNum(lo)} cartons of ${u} plus 1 carton of ${r}, booked as a second line for the same SKU`, lines: [{ quantity: lo * u, cartons: lo, unitsPerCarton: u }, { quantity: r, cartons: 1, unitsPerCarton: r }] });
+  if (lo > 0) options.push({ key: "a", label: `${plural(lo * u, "unit")} in ${plural(lo, "carton")}`, lines: [{ quantity: lo * u, cartons: lo, unitsPerCarton: u }] });
+  options.push({ key: "b", label: `${plural(hi * u, "unit")} in ${plural(hi, "carton")}`, lines: [{ quantity: hi * u, cartons: hi, unitsPerCarton: u }] });
+  if (lo > 0) options.push({ key: "c", label: `keep ${fmtNum(q)} as ${plural(lo, "carton")} of ${u} plus 1 carton of ${r}, booked as a second line for the same SKU`, lines: [{ quantity: lo * u, cartons: lo, unitsPerCarton: u }, { quantity: r, cartons: 1, unitsPerCarton: r }] });
   return { rowId: it.rowId, sku: it.sku, quantity: q, unitsPerCarton: u, remainder: r, options };
 }
 
 function nonDivisiblePrompt(nd: NonDivisible): string {
   const opts = nd.options.map((o) => `(${o.key}) ${o.label}`).join(", ");
-  return `${fmtNum(nd.quantity)} doesn't divide into ${nd.unitsPerCarton}s; the last carton would hold ${nd.remainder} units, and the rulebook needs an exact match. Which is right? ${opts}.`;
+  return `${fmtNum(nd.quantity)} doesn't divide into ${nd.unitsPerCarton}s; the last carton would hold ${plural(nd.remainder, "unit")}, and the rulebook needs an exact match. Which is right? ${opts}.`;
 }
 
 const ITEM_Q: Record<string, (d: string) => string> = {
@@ -116,8 +116,7 @@ function slotGroups(b: Booking, declined: string[], allItems: boolean): [Slot, s
 
 /** Missing slots in group order; the first incomplete group is asked, max 3 questions. */
 export function nextQuestions(st: ChatState): { slots: Slot[]; text: string[] } {
-  const group = slotGroups(st.session.booking, st.declined, false).find((g) => g.length) ?? [];
-  const pick = group.slice(0, 3);
+  const pick = slotGroups(st.session.booking, st.declined, false).flat().slice(0, 3);
   return { slots: pick.map((p) => p[0]), text: pick.map((p) => p[1]) };
 }
 
@@ -230,10 +229,19 @@ function patchToEdits(st: ChatState, p: Patch, today: string): { edits: Edit[]; 
       if (f === "description") { if (value) edits.push({ path: "item.description", rowId: target.rowId, value: String(value) }); continue; }
       if (f === "hsCode") { edits.push({ path: "item.hsCode", rowId: target.rowId, value: value == null ? null : String(value) }); continue; }
       if (f === "countryOfOrigin") { edits.push({ path: "item.countryOfOrigin", rowId: target.rowId, value: normaliseCountry(String(value ?? "")) }); continue; }
+      if (f === "unitPrice" && /\$|€|usd|eur|dollar|euro/i.test(source)) continue; // GBP only (note added by currencyNote)
       const v = num(value);
       if (v != null && sane(f, v, source)) edits.push({ path: `item.${f}` as Edit["path"], rowId: target.rowId, value: v });
     }
   }
+  const before = st.session.booking;
+  const removed = before.items.filter((i) => !booking.items.some((x) => x.rowId === i.rowId));
+  const added = booking.items.filter((i) => !before.items.some((x) => x.rowId === i.rowId));
+  if ((removed.length || added.length) && before.grossWeight != null && before.items.length > 0 && !p.set.grossWeight) {
+    edits.push({ path: "grossWeight", value: null });
+    const what = removed.length ? `removed ${removed.map((i) => i.description || i.sku).join(", ")}` : `added ${added.map((i) => i.description || i.sku).join(", ")}`;
+    notes.push(`You ${what}, so the old gross weight (${fmtNum(before.grossWeight)} kg) no longer fits the goods. I've cleared it — please confirm the new total weight (and check the pallet count).`);
+  } else if (removed.length) notes.push(`Removed ${removed.map((i) => i.description || i.sku).join(", ")}.`);
   for (const d of p.declined) {
     const it = booking.items.find((i) => d.sku && i.sku === d.sku) ?? (booking.items.length === 1 ? booking.items[0] : undefined);
     if (it) declined.push(`${d.field}@${it.rowId}`);
@@ -319,7 +327,8 @@ export function chatTurn(st0: ChatState, rawPatch: Patch, message: string, env: 
 
   let stuck = false;
   const conv = patchToEdits(st, patch, env.today);
-  notes.push(...placeNotes(message), ...conv.notes);
+  const cur = currencyNote(message);
+  notes.push(...placeNotes(message), ...(cur ? [cur] : []), ...conv.notes);
   const s1 = { ...st.session, booking: conv.booking };
   const before = st.session;
   const { session, changes } = applyEdits(s1, conv.edits, "chat", env, stamp, true, { captureOf: (bk) => captureFor(bk, conv.declined) });
@@ -346,8 +355,8 @@ export function chatTurn(st0: ChatState, rawPatch: Patch, message: string, env: 
       st = { ...st, pending: null, session: revalidate({ ...st.session, confirmed }, env) };
       const packed = it.unitsPerCarton! * it.cartons;
       notes.push(packed === it.quantity
-        ? `Keeping ${fmtNum(it.quantity)} units in ${fmtNum(it.cartons)} cartons as you said.`
-        : `Keeping ${fmtNum(it.quantity)} units in ${fmtNum(it.cartons)} cartons as you said. At ${it.unitsPerCarton} per carton, ${fmtNum(it.cartons)} cartons hold ${fmtNum(packed)}, not ${fmtNum(it.quantity)}, so that breaks R-03 — see the card.`);
+        ? `Keeping ${plural(it.quantity!, "unit")} in ${plural(it.cartons, "carton")} as you said.`
+        : `Keeping ${plural(it.quantity!, "unit")} in ${plural(it.cartons, "carton")} as you said. At ${it.unitsPerCarton} per carton, ${plural(it.cartons, "carton")} hold ${fmtNum(packed)}, not ${fmtNum(it.quantity)}, so that breaks R-03 — see the card.`);
     } else if (!it || !nonDivisibleOptions(it)) st = { ...st, pending: null };
     else if (changes.length === 0 && st0.pending?.rowId === it.rowId) stuck = true;
   }
@@ -359,8 +368,8 @@ export function chatTurn(st0: ChatState, rawPatch: Patch, message: string, env: 
   const computedNow = changes.filter((c) => /calculated/.test(c.label));
   if (computedNow.length) {
     const parts: string[] = [];
-    for (const it of b.items) if (it.cartons != null && !st.session.sellerCartons.includes(it.rowId) && computedNow.some((c) => c.label.startsWith(it.sku))) parts.push(`${fmtNum(it.quantity)} ÷ ${it.unitsPerCarton} = ${fmtNum(it.cartons)} cartons of ${it.description}`);
-    if (b.cartons != null && computedNow.some((c) => c.label.startsWith("Cartons"))) parts.push(`${fmtNum(b.cartons)} cartons in total`);
+    for (const it of b.items) if (it.cartons != null && !st.session.sellerCartons.includes(it.rowId) && computedNow.some((c) => c.label.startsWith(it.sku))) parts.push(`${fmtNum(it.quantity)} ÷ ${it.unitsPerCarton} = ${plural(it.cartons, "carton")} of ${it.description}`);
+    if (b.cartons != null && computedNow.some((c) => c.label.startsWith("Cartons"))) parts.push(`${plural(b.cartons, "carton")} in total`);
     if (b.declaredValue != null && computedNow.some((c) => c.label.startsWith("Declared"))) parts.push(`declared value ${gbp(b.declaredValue)} (${b.items.map((i) => `${fmtNum(i.quantity)} × ${gbp(i.unitPrice)}`).join(" + ")})`);
     if (parts.length) notes.push(`I worked out ${parts.join("; ")}. Tell me if your paperwork says otherwise.`);
   }

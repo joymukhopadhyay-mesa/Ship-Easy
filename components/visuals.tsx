@@ -5,7 +5,7 @@
 import Image from "next/image";
 import type { CSSProperties, ReactNode } from "react";
 import { addDays, dayOfWeek, diffDays, prettyDate } from "@/lib/dates";
-import { fmtNum, gbp } from "@/lib/format";
+import { fmtNum, gbp, plural } from "@/lib/format";
 import type { BookingResult, CarrierId, RuleResult, Verdict } from "@/lib/types";
 
 // ---------------------------------------------------------------- status colours (one meaning each)
@@ -358,7 +358,7 @@ function tileValue(r: RuleResult, res: BookingResult): string {
   if (r.status === "not_checked" || r.status === "cannot_compute") return "Waiting for details";
   switch (r.id) {
     case "R-02": return `${gbp(b.declaredValue)} vs ${gbp(sum)}`;
-    case "R-04": return `${fmtNum(b.cartons)} vs ${fmtNum(sumCartons)} cartons`;
+    case "R-04": return `${fmtNum(b.cartons)} vs ${plural(sumCartons, "carton")}`;
     case "R-05": { const o = c.options.find((x) => x.id === c.chosen); return c.kgPerPallet == null ? "—" : `${fmtNum(Math.round(c.kgPerPallet))} / ${o ? o.maxKgPerPallet : 750} kg`; }
     case "R-07": return `${fmtNum(b.grossWeight)} vs ${fmtNum(Math.round(goods))} kg goods`;
     case "R-08": return b.destinationType !== "Warehouse" ? "Not a warehouse" : b.appointmentBooked ? "Booked" : "Not booked";

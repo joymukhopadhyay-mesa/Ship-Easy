@@ -25,4 +25,5 @@ export function kg(n: number | null | undefined): string {
 export const round2 = (x: number) => Math.round((x + Number.EPSILON) * 100) / 100;
 export const round3 = (x: number) => Math.round((x + Number.EPSILON) * 1000) / 1000;
 export const isInt = (x: number) => Number.isFinite(x) && Math.abs(x - Math.round(x)) < 1e-9;
-export const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
+/** "1 pallet", "2 pallets", "1,080 units" — never "1 pallets". */
+export const plural = (n: number, one: string, many = one + "s") => `${Number.isFinite(n) ? n.toLocaleString("en-GB", { maximumFractionDigits: 2 }) : n} ${n === 1 ? one : many}`;

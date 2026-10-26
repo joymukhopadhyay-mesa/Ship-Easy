@@ -64,6 +64,7 @@ const sortBy = (opts: CarrierOption[], keys: Key[]) =>
 const cost: Key = (o) => o.totalCost ?? Infinity;
 const transit: Key = (o) => o.transitDays;
 const unreliability: Key = (o) => -o.onTimePct;
+const eta: Key = (o) => (o.eta ? Date.parse(o.eta + "T00:00:00Z") / 86400000 : Infinity);
 
 /** Ranks feasible options for a priority; first = recommended. */
 export function rank(feasible: CarrierOption[], priority: Priority, weights: Weights): CarrierOption[] {
@@ -71,7 +72,10 @@ export function rank(feasible: CarrierOption[], priority: Priority, weights: Wei
     case "Cheapest":
       return sortBy(feasible, [cost, transit, unreliability]);
     case "Fastest":
-      return sortBy(feasible, [transit, unreliability, cost]);
+      // Fastest = earliest real delivery. Weekend roll-over can give two carriers the same ETA;
+      // then the cheaper one wins (paying more for the same delivery day is never "faster").
+      // Without dates it falls back to the spec order: transit, on-time, cost.
+      return feasible.every((o) => o.eta) ? sortBy(feasible, [eta, cost, transit, unreliability]) : sortBy(feasible, [transit, unreliability, cost]);
     case "Most reliable":
       return sortBy(feasible, [unreliability, transit, cost]);
     case "Balanced": {

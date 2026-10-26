@@ -92,7 +92,8 @@ export function sanitisePatch(patch: Patch, latestMessage: string): { patch: Pat
       if (!sourceInMessage(sv.source, latestMessage)) { rejected.push({ field: `item.${field}`, value: sv.value, source: sv.source, reason: "not in latest message" }); continue; }
       fields[field] = sv;
     }
-    if (it.op === "remove" || Object.keys(fields).length) out.items.push({ op: it.op, sku: it.sku ?? null, fields });
+    // every op — including "remove" — needs a field quoting the seller's words
+    if (Object.keys(fields).length) out.items.push({ op: it.op, sku: it.sku ?? null, fields });
   }
   if (patch.choice && sourceInMessage(patch.choice.source, latestMessage)) out.choice = patch.choice;
   out.declined = (patch.declined ?? []).filter((d) => sourceInMessage(d.source, latestMessage));

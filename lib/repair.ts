@@ -4,7 +4,7 @@
 //   1. single field  2. bounded pair (one booking-level + one item-level)  3. honest fallback.
 import { PAIR_SEARCH_CAP, TRADE_TARIFF_URL } from "./config";
 import { buildContext, type RuleCtx } from "./context";
-import { fmtNum, gbp, isInt, kg, round2 } from "./format";
+import { fmtNum, gbp, isInt, kg, plural, round2 } from "./format";
 import { failureKeys, runRules } from "./rulebook";
 import { FIELD_KIND, isMutable } from "./trust";
 import type { Booking, Change, CarrierId, Env, MutableField, Repair, RuleId, RuleResult } from "./types";
@@ -131,7 +131,7 @@ function arithmetic(b: Booking, s: Scored): string[] {
   for (const c of s.changes) {
     if (c.field === "item.quantity" || c.field === "item.cartons") {
       const it = s.after.ctx.items.find((i) => i.rowId === c.rowId)!;
-      lines.push(`${it.sku}: ${fmtNum(it.unitsPerCarton)} per carton × ${fmtNum(it.cartons)} cartons = ${fmtNum(it.unitsPerCarton! * it.cartons!)} = quantity ${fmtNum(it.quantity)}`);
+      lines.push(`${it.sku}: ${fmtNum(it.unitsPerCarton)} per carton × ${plural(it.cartons!, "carton")} = ${fmtNum(it.unitsPerCarton! * it.cartons!)} = quantity ${fmtNum(it.quantity)}`);
     }
   }
   if (fields.has("booking.declared_value") || fields.has("item.quantity")) lines.push(...(r["R-02"].numbers?.slice(0, 1) ?? []));

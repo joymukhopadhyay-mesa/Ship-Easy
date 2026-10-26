@@ -20,7 +20,7 @@ import { Btn, Card, CardHeader, Pill, Toggle, TruckIcon } from "./ui";
 import { Overview, type Row } from "./Overview";
 import { Chip, Dot, Icon, Legend, StatusPill, VehicleImg, VERDICT_TONE } from "./visuals";
 
-type Msg = { role: "user" | "bot"; text: string; at: string };
+type Msg = { id?: number; role: "user" | "bot"; text: string; at: string; queued?: boolean };
 
 const EXAMPLES: { label: string; text: string; testId: string }[] = [
   { label: "Demo 1 · 1,600 kg on 2 pallets", testId: "ex-demo1", text: "Ship 600 cast iron skillets from Birmingham to our warehouse in Hamburg, ready 02-11-2026. £18 each, 6 per carton, 2.3 kg each, HS 732393, made in China. 1,600 kg on 2 pallets. Balanced please, delivery appointment is booked." },
@@ -77,6 +77,14 @@ export default function App({ today }: { today: string }) {
   const [msgs, setMsgs] = useState<Msg[]>([{ role: "bot", at: "", text: "Hi! Tell me what you're shipping, in your own words — for example \"600 cast iron skillets to a warehouse in Hamburg\". I'll ask only for what's missing, check it against the rulebook and recommend a carrier." }]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  // Messages typed while a reply is being worked out are queued (never dropped) and run in order,
+  // each against the booking as it is after the previous one.
+  const chatRef = useRef(chat);
+  useEffect(() => { chatRef.current = chat; }, [chat]);
+  const busyRef = useRef(false);
+  const queueRef = useRef<{ id: number; text: string }[]>([]);
+  const runIdRef = useRef(0);
+  const msgId = useRef(1);
   const logRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     // scroll only the chat log, never the page (the change log must stay above the fold)
@@ -189,25 +197,54 @@ export default function App({ today }: { today: string }) {
     }
   };
 
-  const send = async (text: string, base?: ChatState) => {
-    const message = text.trim();
-    if (!message || busy) return;
-    setBusy(true);
-    setInput("");
-    setMsgs((m) => [...m, { role: "user", text: message, at: stamp() }]);
+  /** One turn. Returns the new state, or null if the chat was reset while it was running. */
+  const runTurn = async (message: string, st: ChatState, run: number): Promise<ChatState | null> => {
+    const at = stamp();
     try {
-      const st = base ?? chat;
-      const at = stamp();
       const patch = (await getPatch(message, st)) ?? emptyPatch();
       let t = chatTurn(st, patch, message, { ...env, hazardHints: hintsRef.current }, at);
       const newHints = await checkHazards(t.state.session.booking.items);
       if (Object.keys(newHints).length) t = chatTurn(st, patch, message, { ...env, hazardHints: hintsRef.current }, at);
+      if (run !== runIdRef.current) return null;
+      chatRef.current = t.state;
       setChat(t.state);
       setMsgs((m) => [...m, { role: "bot", text: t.reply, at: stamp() }]);
+      return t.state;
     } catch {
+      if (run !== runIdRef.current) return null;
       setMsgs((m) => [...m, { role: "bot", text: "Sorry, I couldn't process that. Please try rephrasing.", at: stamp() }]);
+      return st;
+    }
+  };
+
+  const send = async (text: string, base?: ChatState) => {
+    const message = text.trim();
+    if (!message) return;
+    setInput("");
+    const id = msgId.current++;
+    if (busyRef.current && !base) {
+      // still thinking: show it now, run it next
+      queueRef.current.push({ id, text: message });
+      setMsgs((m) => [...m, { id, role: "user", text: message, at: stamp(), queued: true }]);
+      return;
+    }
+    setMsgs((m) => [...m, { id, role: "user", text: message, at: stamp() }]);
+    busyRef.current = true;
+    setBusy(true);
+    const run = runIdRef.current;
+    let st = base ?? chatRef.current;
+    let next: { id: number; text: string } | undefined = { id, text: message };
+    try {
+      while (next) {
+        const cur: { id: number; text: string } = next;
+        setMsgs((m) => m.map((x) => (x.id === cur.id ? { ...x, queued: false } : x)));
+        const out = await runTurn(cur.text, st, run);
+        if (out === null) return; // reset meanwhile: drop the rest
+        st = out;
+        next = queueRef.current.shift();
+      }
     } finally {
-      setBusy(false);
+      if (run === runIdRef.current) { busyRef.current = false; setBusy(false); }
     }
   };
 
@@ -218,6 +255,11 @@ export default function App({ today }: { today: string }) {
 
   const resetChat = (intro = "Started over. What are you shipping?") => {
     const fresh = newChat(env);
+    runIdRef.current += 1; // any turn still running for the old chat is discarded
+    queueRef.current = [];
+    busyRef.current = false;
+    setBusy(false);
+    chatRef.current = fresh;
     setChatRun((n) => n + 1); // a new run never reuses an earlier run's explanation
     dropHints("c"); // chat row ids restart at c1, so the previous run's hazard flags must not carry over
     setChat(fresh);
@@ -406,7 +448,7 @@ export default function App({ today }: { today: string }) {
                   {msgs.map((m, k) => (
                     <div key={k} className={`anim-fade-up flex ${m.role === "user" ? "justify-end" : "justify-start gap-2"}`}>
                       {m.role === "bot" && <span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accentSoft text-accent"><Icon name="spark" className="h-3.5 w-3.5" /></span>}
-                      <div className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm ${m.role === "user" ? "rounded-br-md bg-ink text-white" : "rounded-tl-md bg-[#F4F5F7] text-ink"}`} data-testid={m.role === "bot" ? "bot-msg" : "user-msg"}>{m.text}</div>
+                      <div className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm ${m.role === "user" ? "rounded-br-md bg-ink text-white" : "rounded-tl-md bg-[#F4F5F7] text-ink"}`} data-testid={m.role === "bot" ? "bot-msg" : "user-msg"}>{m.text}{m.queued && <span data-testid="queued" className="mt-1 block text-[10px] font-semibold text-white/70">Queued — I'll read this next</span>}</div>
                     </div>
                   ))}
                   {busy && <div className="flex items-center gap-2 text-xs text-muted"><span className="anim-shimmer h-6 w-24 rounded-full" /> Checking…</div>}
@@ -417,8 +459,8 @@ export default function App({ today }: { today: string }) {
                     {chat.baselined && <button data-testid="chip-add-pallet" onClick={() => send("add another pallet")} className="rounded-full bg-accent px-2.5 py-1 text-[11px] font-semibold text-white">+ add another pallet</button>}
                   </div>
                   <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); send(input); }}>
-                    <input data-testid="chat-input" value={input} onChange={(e) => setInput(e.target.value.slice(0, 1000))} placeholder="e.g. 1,000 mugs to Berlin, £5 each…" className="min-w-0 flex-1 rounded-full border border-line bg-white px-4 py-2 text-sm outline-none focus:border-accent" />
-                    <Btn testId="chat-send" disabled={busy || !input.trim()}>Send</Btn>
+                    <input data-testid="chat-input" value={input} onChange={(e) => setInput(e.target.value.slice(0, 1000))} placeholder={busy ? "Still checking… you can keep typing" : "e.g. 1,000 mugs to Berlin, £5 each…"} className="min-w-0 flex-1 rounded-full border border-line bg-white px-4 py-2 text-sm outline-none focus:border-accent" />
+                    <Btn testId="chat-send" disabled={!input.trim()}>{busy ? "Queue" : "Send"}</Btn>
                   </form>
                 </div>
               </Card>

@@ -88,6 +88,12 @@ export function placeNotes(message: string): string[] {
   return notes;
 }
 
+/** Prices in another currency are never used (everything is GBP); the seller is told why. */
+export function currencyNote(message: string): string | null {
+  const m = /(?:\$|€|us\$)\s?\d[\d,.]*|\b\d[\d,.]*\s?(?:usd|eur|dollars?|euros?|bucks)\b/i.exec(message);
+  return m ? `Prices must be in pounds (GBP), so I didn't use "${m[0].trim()}". What's the price per unit in £?` : null;
+}
+
 /** Hard plausibility limits for typed values. Outside them the value is not used and the question is asked again. */
 const LIMITS: Record<string, { min: number; max: number; integer?: boolean; label: string }> = {
   pallets: { min: 1, max: 100, integer: true, label: "pallets" },

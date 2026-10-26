@@ -100,9 +100,9 @@ describe("Part 1 style: casual sentence with gaps, grouped questions (max 3)", (
     t = say(t.state, "£18 each, 6 per carton, 2.3 kg each");
     expect(t.state.session.booking.items[0].cartons).toBe(100);
     expect(t.reply).toContain("600 ÷ 6 = 100 cartons");
-    expect(t.state.expecting.map((s) => s.field)).toEqual(["hsCode", "countryOfOrigin"]);
+    expect(t.state.expecting.map((s) => s.field)).toEqual(["hsCode", "countryOfOrigin", "grossWeight"]);
     t = say(t.state, "HS 732393, made in China");
-    expect(t.state.expecting.map((s) => s.field)).toEqual(["grossWeight", "pallets"]);
+    expect(t.state.expecting.map((s) => s.field)).toEqual(["grossWeight", "pallets", "priority"]);
     expect(t.reply).toContain("1,380 kg");
     t = say(t.state, "1600 kg on 2 pallets");
     expect(t.state.expecting.map((s) => s.field)).toEqual(["priority", "appointmentBooked"]);
@@ -118,9 +118,9 @@ describe("Part 1 style: casual sentence with gaps, grouped questions (max 3)", (
 
   it("\"don't know\" for an HS code is accepted (then R-01 flags it), not re-asked", () => {
     let t = say(newChat(env), "200 tote bags from London to a shop in Lyon ready tomorrow, £8 each, 10 per carton, 0.2kg each");
-    expect(t.state.expecting.map((s) => s.field)).toEqual(["hsCode", "countryOfOrigin"]);
+    expect(t.state.expecting.map((s) => s.field)).toEqual(["hsCode", "countryOfOrigin", "grossWeight"]);
     t = say(t.state, "don't know");
-    expect(t.state.expecting.map((s) => s.field)).toEqual(["grossWeight", "pallets"]);
+    expect(t.state.expecting.map((s) => s.field)).toEqual(["grossWeight", "pallets", "priority"]);
   });
 });
 

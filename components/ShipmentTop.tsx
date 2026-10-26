@@ -5,7 +5,7 @@ import { useState } from "react";
 import type { ChangeLogEntry } from "@/lib/changelog";
 import { prettyDate } from "@/lib/dates";
 import { tradeOff, VERDICT_TEXT } from "@/lib/explain";
-import { fmtNum, gbp } from "@/lib/format";
+import { fmtNum, gbp, plural } from "@/lib/format";
 import type { BookingResult, CarrierId } from "@/lib/types";
 import { Card } from "./ui";
 import { CARRIER_IMG, Chip, Icon, RouteMap, RouteTrack, StatusPill, TONE, TruckLoad, VehicleImg, VERDICT_LABEL, VERDICT_TONE, type Tone } from "./visuals";
@@ -180,14 +180,14 @@ export function CarrierCards({ res, onPick }: { res: BookingResult; onPick: (id:
             <VehicleImg src={CARRIER_IMG[o.id].src} alt={CARRIER_IMG[o.id].alt} className={`my-2 h-20 w-full ${tooHeavy ? "opacity-40 grayscale" : ""}`} />
             <div className="grid grid-cols-3 gap-1 text-center">
               <div><p className="text-sm font-semibold">{gbp(o.totalCost)}</p><p className="text-[10px] text-muted">total</p></div>
-              <div><p className="text-sm font-semibold">{o.transitDays} days</p><p className="text-[10px] text-muted">transit</p></div>
+              <div><p className="text-sm font-semibold">{plural(o.transitDays, "day")}</p><p className="text-[10px] text-muted">transit</p></div>
               <div><p className="text-sm font-semibold">{o.onTimePct}%</p><p className="text-[10px] text-muted">on time</p></div>
             </div>
             <div className="mt-2">
               <div className="flex justify-between text-[10px] text-muted"><span>Load per pallet</span><span className={tooHeavy ? "font-semibold text-bad" : ""}>{per == null ? "—" : `${fmtNum(Math.round(per))} / ${o.maxKgPerPallet} kg`}</span></div>
               <div className="mt-1 h-1.5 rounded-full bg-zinc-100"><div className={`anim-grow-x h-full rounded-full ${tooHeavy ? "bg-bad" : chosen ? "bg-accent" : "bg-ink/70"}`} style={{ width: `${Math.min(100, pct)}%` }} /></div>
             </div>
-            <p className="mt-2 text-[11px] text-muted">{tooHeavy ? `Needs at least ${o.minPallets} pallets` : chosen ? `ETA ${prettyDate(o.eta)}` : chosenOpt ? `vs ${chosenOpt.id}: ${tradeOff(chosenOpt, o)}` : `ETA ${prettyDate(o.eta)}`}</p>
+            <p className="mt-2 text-[11px] text-muted">{tooHeavy ? `Needs at least ${plural(o.minPallets ?? 0, "pallet")}` : chosen ? `ETA ${prettyDate(o.eta)}` : chosenOpt ? `vs ${chosenOpt.id}: ${tradeOff(chosenOpt, o)}` : `ETA ${prettyDate(o.eta)}`}</p>
             {!chosen && !tooHeavy && <button data-testid={`pick-${o.id}`} onClick={() => onPick(o.id)} className="mt-2 rounded-full bg-ink px-3 py-1 text-[11px] font-semibold text-white hover:bg-zinc-800">Use {o.name}</button>}
             {chosen && c.override && <button onClick={() => onPick(null)} className="mt-2 rounded-full bg-white px-3 py-1 text-[11px] font-semibold ring-1 ring-line hover:bg-zinc-50">Back to recommended</button>}
           </div>

@@ -7,7 +7,7 @@ import { DESTINATION_CITIES, ITEM_ORIGIN_COUNTRIES, ORIGIN_CITIES, PRIORITIES } 
 import { buildContext } from "@/lib/context";
 import { prettyDate, toDDMMYYYY, parseDDMMYYYY } from "@/lib/dates";
 import { carrierReason, confirmation, fixText, nextSteps, VERDICT_TEXT, whyItMatters } from "@/lib/explain";
-import { fmtNum, gbp, kg } from "@/lib/format";
+import { fmtNum, gbp, kg, plural } from "@/lib/format";
 import { invoiceDraft } from "@/lib/invoice";
 import { sellerActions, type SellerAction } from "@/lib/repair";
 import type { Edit } from "@/lib/session";
@@ -139,7 +139,7 @@ function CarrierPanel({ res, weights, onWeights, onEdits, today }: { res: Bookin
             <>
               <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">{c.override ? "Seller's choice" : "Recommended"}</p>
               <p data-testid="chosen-carrier" className="text-2xl font-semibold">{chosen.name} <span className="text-base font-normal text-muted">· {chosen.service}</span></p>
-              <p className="mt-1 text-3xl font-semibold">{gbp(chosen.totalCost)} <span className="text-sm font-normal text-muted">{fmtNum(res.booking.pallets)} pallets × {gbp(chosen.pricePerPallet)}</span></p>
+              <p className="mt-1 text-3xl font-semibold">{gbp(chosen.totalCost)} <span className="text-sm font-normal text-muted">{plural(res.booking.pallets ?? 0, "pallet")} × {gbp(chosen.pricePerPallet)}</span></p>
             </>
           ) : (
             <p data-testid="chosen-carrier" className="text-xl font-semibold text-bad">No carrier can be booked yet</p>
@@ -173,7 +173,7 @@ function CarrierPanel({ res, weights, onWeights, onEdits, today }: { res: Bookin
               <tr key={o.id} className={`border-t border-line ${o.id === c.chosen ? "font-semibold" : ""}`}>
                 <td className="py-1.5">{o.name} <span className="text-muted">{o.service}</span>{o.id === c.recommended ? " ★" : ""}</td>
                 <td>{gbp(o.totalCost)}</td><td>{o.transitDays} d</td><td>{o.onTimePct}%</td><td>{o.maxKgPerPallet}</td>
-                <td className={o.feasible ? "text-ok" : "text-bad"}>{c.kgPerPallet == null ? "—" : o.feasible ? "Yes" : `No (min ${o.minPallets} pallets)`}</td>
+                <td className={o.feasible ? "text-ok" : "text-bad"}>{c.kgPerPallet == null ? "—" : o.feasible ? "Yes" : `No (min ${plural(o.minPallets ?? 0, "pallet")})`}</td>
                 <td>{prettyDate(o.eta)}</td>
               </tr>
             ))}
@@ -278,7 +278,7 @@ export function BookingCard(p: CardProps) {
           <p className="px-5 py-4 text-sm font-medium text-ok">No findings: every check passes.</p>
         )}
         <div className="border-t border-line px-5 py-3">
-          <button className="text-xs font-semibold text-ink" onClick={() => setShowPassed(!showPassed)}>{passed.length} checks passed {showPassed ? "▴" : "▾"}</button>
+          <button className="text-xs font-semibold text-ink" onClick={() => setShowPassed(!showPassed)}>{plural(passed.length, "check")} passed {showPassed ? "▴" : "▾"}</button>
           {showPassed && <ul className="mt-2 space-y-1">{passed.map((r) => <li key={r.id} className="text-xs text-muted"><span className="font-mono font-semibold text-ok">{r.id} ✓</span> {r.message}{r.numbers?.length ? <span className="font-mono text-[10px]"> — {r.numbers.join(" · ")}</span> : null}</li>)}</ul>}
         </div>
         {res.fyi.length > 0 && (

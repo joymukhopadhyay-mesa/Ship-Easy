@@ -101,7 +101,8 @@ Booking fields you may set (field -> value format):
 - pallets: a whole number, or "+1"/"-1" (etc.) for relative changes like "add another pallet". grossWeight: kg number (total including packaging; convert tonnes).
 - appointmentBooked: "yes" | "no". chosenCarrier: "A" | "B" | "C", or "recommended" to clear a pick.
 Item fields (per product): description, quantity, unitPrice (GBP per unit), unitsPerCarton, cartons (only if the seller states the carton count), unitWeight (kg per unit; convert grams), hsCode (digits as text), countryOfOrigin (United Kingdom | China | India | Vietnam | Turkey | Germany).
-Use op "add" for a new product (sku ""), "update" with the sku from context to change an existing one, "remove" to drop one.
+Use op "add" for a new product (sku ""), "update" with the sku from context to change an existing one, "remove" to drop one (for "remove", put the product description in fields with source = the seller's words, e.g. "remove the bowls").
+Prices must be in GBP (£). If a price is given in another currency ($, €, USD, EUR), do NOT set unitPrice.
 NEVER set: origin country, destination country, currency, declared value, booking total cartons, booking ID — the code computes or infers them.
 Weight "each/per unit" is unitWeight; a total weight is grossWeight.
 If context.pendingChoice is true and the seller picks an option like "b" or "option (b)", put "b" in choice and the words in choice_source.

@@ -75,8 +75,10 @@ export function tradeOff(a: CarrierOption, b: CarrierOption): string {
   const parts: string[] = [];
   const dc = (b.totalCost ?? 0) - (a.totalCost ?? 0);
   if (dc !== 0) parts.push(`${gbp(Math.abs(dc))} ${dc > 0 ? "more" : "less"}`);
-  const dt = b.transitDays - a.transitDays;
+  // real delivery days (weekend roll-over) when known, else transit days
+  const dt = a.eta && b.eta ? Math.round((Date.parse(b.eta) - Date.parse(a.eta)) / 86400000) : b.transitDays - a.transitDays;
   if (dt !== 0) parts.push(`${plural(Math.abs(dt), "day")} ${dt < 0 ? "faster" : "slower"}`);
+  else if (b.transitDays !== a.transitDays) parts.push("same delivery day");
   const dr = b.onTimePct - a.onTimePct;
   if (dr !== 0) parts.push(`${Math.abs(dr)} points ${dr > 0 ? "more" : "less"} reliable`);
   return parts.join(", ") || "identical on every measure";
@@ -93,7 +95,13 @@ export function carrierReason(c: CarrierResult): { reason: string; runnerUp: str
   let why: string;
   switch (c.priority) {
     case "Cheapest": why = `lowest total cost, ${gbp(rec.totalCost)}`; break;
-    case "Fastest": why = `shortest transit, ${plural(rec.transitDays, "day")}`; break;
+    case "Fastest": {
+      const sameDay = c.options.filter((o) => o.feasible && o.id !== rec.id && o.eta === rec.eta && o.transitDays < rec.transitDays);
+      why = rec.eta
+        ? `earliest delivery, ${prettyDate(rec.eta)}${sameDay.length ? ` (${sameDay.map((o) => o.name).join(", ")} ${sameDay.length > 1 ? "are" : "is"} quicker on the road but arrives the same day after the weekend, for more money)` : ""}`
+        : `shortest transit, ${plural(rec.transitDays, "day")}`;
+      break;
+    }
     case "Most reliable": why = `highest on-time rate, ${rec.onTimePct}%`; break;
     default: {
       const s = c.balanced.find((b) => b.id === rec.id);
