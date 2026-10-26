@@ -399,3 +399,22 @@ Request: match the colours, format, visuals, images and animations of `docs/ui-r
 
 - **Spec change (from the user, via this test round):** the prompt said "Fastest = transit (tie: on-time, then cost)". The user now wants Fastest to mean the earliest actual delivery. Two engine tests that encoded the old order with a Thursday ready date were updated. A Monday-ready case was added so the spec's Demo 2 numbers stay locked (C at £1,360, +£700, 1 day faster); fixture f19 and the oracle are unchanged and still agree. Two chat tests were updated to the new 3-question sequence.
 - Tests: `tests/feedback3.test.ts` (12 new). Suite **205 passed**, oracle agrees, typecheck clean.
+
+---
+
+## AI suggestion for missing HS codes (26-10-2026)
+
+Requested by the user: when an HS code is missing, suggest one with AI, labelled **Possible**, with a link to verify it, **never auto-applied**, and the seller must verify it manually through the link (the loop is closed by the seller, not the app).
+
+**Sources (agreed with the user before building):** (1) the Gemini model proposes a likely 6-digit code from the item description (model recall, not a database); (2) the UK government's public **Trade Tariff** API (`trade-tariff.service.gov.uk/api/v2/headings/<4 digits>`, no key or login) confirms that some commodity starts with that code and supplies the official wording. A code the tariff doesn't recognise is dropped, never shown. Live check: the model suggested `940520` for a desk lamp (a retired subheading) and the tariff check removed it. Mug → 691200, t-shirt → 610910, coffee → 090121 were confirmed.
+
+**Built**
+- `lib/hs.ts` (contract, prompt, `tariffUrl`/`formatHs`), `lib/server/tariff.ts` (existence check, 6 h cache, never throws), `app/api/hs/route.ts` (guarded like the other routes; returns suggestions only), `components/HsSuggest.tsx`.
+- Card (R-01 finding, chat and uploads): `6912.00` · **Possible** · "Not verified" · "Official tariff says: …" · "Verify on gov.uk Trade Tariff ↗". The "I checked it — use 6912.00" button is **disabled until the seller has opened the link**, then the status reads "Link opened — now confirm". The seller can also just type their own code in the item row. Using it is an ordinary logged edit (`MUG-01 HS code blank → 691200 | R-01 Red → Pass`).
+- Uploads: suggestions are fetched for items with a blank or short code (the sample file's 5-digit coffee `90121` gets `0901.21`). Local-only mode: no AI call and no tariff call; the block shows "Local-only mode makes no AI suggestions" plus a "Search the Trade Tariff" link. Vague or unclassifiable descriptions also get the search link and a note.
+- R-01 itself is unchanged: severity Red, no repair value is proposed by the rule engine (`applyEnabled: false`), so the suggestion can't change a verdict until the seller confirms it. Privacy panel updated: only the 6-digit code (never descriptions or booking data) goes to the tariff service.
+- Limit stated on screen: the tariff check proves the code exists, not that it fits the product, which is why the seller must confirm.
+
+**Verification:** real model + tariff in the browser (chat: suggestion → locked button → link opened → unlocked → used → R-01 Pass, change log line; upload BK-106; Local-only). `tests/hs.test.ts` (7). Suite **212 passed**, typecheck clean.
+
+**Environment note:** the project moved to `C:\Users\Admin\OneDrive\Documents\Ship-Easy`. `.git`, `.env.local` and `node_modules` aren't copied by the app; they were re-created there (`git init` + fetch + reset to `origin/main`, `.env.local`, `npm install`). The in-app preview server kept running the old scratch copy, so the dev server for this feature was started directly from the new folder.

@@ -18,6 +18,9 @@ import { BookingCard } from "./BookingCard";
 import { AssumptionsPanel, PrivacyPanel, type SentRecord } from "./Panels";
 import { Btn, Card, CardHeader, Pill, Toggle, TruckIcon } from "./ui";
 import { Overview, type Row } from "./Overview";
+import type { HsUi } from "./HsSuggest";
+import type { HsSuggestion } from "@/lib/hs";
+import { hsDigits } from "@/lib/rulebook";
 import { Chip, Dot, Icon, Legend, StatusPill, VehicleImg, VERDICT_TONE } from "./visuals";
 
 type Msg = { id?: number; role: "user" | "bot"; text: string; at: string; queued?: boolean };
@@ -66,6 +69,11 @@ export default function App({ today }: { today: string }) {
   const [chatRun, setChatRun] = useState(1);
   const hintsRef = useRef<Record<string, HazardKind>>({});
   const hazardChecked = useRef(new Set<string>());
+  // HS suggestions: AI guess per item row (never applied automatically) + whether the seller opened the verify link
+  const [hsByRow, setHsByRow] = useState<Record<string, HsSuggestion | undefined>>({});
+  const [hsLoading, setHsLoading] = useState<Record<string, boolean>>({});
+  const [hsOpened, setHsOpened] = useState<Record<string, boolean>>({});
+  const hsCache = useRef(new Map<string, HsSuggestion>());
   const implicated = useRef(new Set<string>());
   const [banner, setBanner] = useState<string | null>(null);
   const [sent, setSent] = useState<SentRecord[]>([]);
@@ -117,7 +125,7 @@ export default function App({ today }: { today: string }) {
     setLocalOnly(true);
     setBanner(message);
   };
-  const postModel = async <T,>(route: "chat" | "hazard" | "explain", body: unknown): Promise<(T & { ok: true; model?: string; costUsd?: number | null }) | null> => {
+  const postModel = async <T,>(route: "chat" | "hazard" | "explain" | "hs", body: unknown): Promise<(T & { ok: true; model?: string; costUsd?: number | null }) | null> => {
     const at = stamp();
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 15000);
@@ -165,6 +173,24 @@ export default function App({ today }: { today: string }) {
     return hints;
   };
 
+  /** Suggest HS codes for items that have none / an invalid one. Only the descriptions are sent. */
+  const suggestHs = async (items: Item[]) => {
+    if (localOnlyRef.current) return;
+    const need = items.filter((i) => i.description && (i.hsCode == null || (hsDigits(i.hsCode) ?? "").length < 6));
+    if (!need.length) return;
+    const fromCache: Record<string, HsSuggestion> = {};
+    const todo = need.filter((i) => { const c = hsCache.current.get(i.description); if (c) fromCache[i.rowId] = c; return !c; });
+    if (Object.keys(fromCache).length) setHsByRow((x) => ({ ...x, ...fromCache }));
+    const uniq = [...new Set(todo.map((i) => i.description))].slice(0, 40);
+    if (!uniq.length) return;
+    setHsLoading((x) => ({ ...x, ...Object.fromEntries(todo.map((i) => [i.rowId, true])) }));
+    const j = await postModel<{ suggestions: HsSuggestion[] }>("hs", { descriptions: uniq });
+    setHsLoading((x) => { const n = { ...x }; todo.forEach((i) => delete n[i.rowId]); return n; });
+    if (!j) return;
+    j.suggestions.forEach((s) => hsCache.current.set(s.description, s));
+    setHsByRow((x) => ({ ...x, ...Object.fromEntries(todo.map((i) => [i.rowId, hsCache.current.get(i.description)])) }));
+  };
+
   const explainInput = (r: BookingResult): ExplainInput => ({
     ref: r.booking.bookingId,
     verdict: r.verdict,
@@ -206,6 +232,7 @@ export default function App({ today }: { today: string }) {
       const newHints = await checkHazards(t.state.session.booking.items);
       if (Object.keys(newHints).length) t = chatTurn(st, patch, message, { ...env, hazardHints: hintsRef.current }, at);
       if (run !== runIdRef.current) return null;
+      void suggestHs(t.state.session.booking.items);
       chatRef.current = t.state;
       setChat(t.state);
       setMsgs((m) => [...m, { role: "bot", text: t.reply, at: stamp() }]);
@@ -261,6 +288,8 @@ export default function App({ today }: { today: string }) {
     setBusy(false);
     chatRef.current = fresh;
     setChatRun((n) => n + 1); // a new run never reuses an earlier run's explanation
+    setHsByRow((x) => Object.fromEntries(Object.entries(x).filter(([k]) => !k.startsWith("c"))));
+    setHsOpened((x) => Object.fromEntries(Object.entries(x).filter(([k]) => !k.startsWith("c"))));
     dropHints("c"); // chat row ids restart at c1, so the previous run's hazard flags must not carry over
     setChat(fresh);
     setMsgs([{ role: "bot", at: "", text: intro }]);
@@ -272,6 +301,8 @@ export default function App({ today }: { today: string }) {
     try {
       const parsed = parseWorkbook(buf);
       dropHints("i");
+      setHsByRow((x) => Object.fromEntries(Object.entries(x).filter(([k]) => !k.startsWith("i"))));
+      setHsOpened((x) => Object.fromEntries(Object.entries(x).filter(([k]) => !k.startsWith("i"))));
       const ss = parsed.bookings.map((b) => newSession("file", b, env));
       setSessions(ss);
       setOrphans(parsed.orphans);
@@ -283,6 +314,7 @@ export default function App({ today }: { today: string }) {
       setFileName(name);
       const scope = `file:${name}:${Date.now()}`;
       setUploadScope(scope);
+      void suggestHs(parsed.bookings.flatMap((b) => b.items));
       void checkHazards(parsed.bookings.flatMap((b) => b.items)).then(() => {
         const envNow = { ...env, hazardHints: hintsRef.current };
         return explain(scope, ss.map((x) => revalidate(x, envNow).result));
@@ -336,6 +368,11 @@ export default function App({ today }: { today: string }) {
         onWeights={setWeights}
         onEdits={onEdits}
         showAddPallet
+        hs={{
+          byRow: hsByRow, loading: hsLoading, opened: hsOpened, localOnly,
+          onOpen: (rowId) => setHsOpened((x) => ({ ...x, [rowId]: true })),
+          onUse: (rowId, code) => onEdits([{ path: "item.hsCode", rowId, value: code }], "edit"),
+        } satisfies HsUi}
         mode={mode === "chat" ? "chat" : "file"}
         narrative={localOnly ? null : mode === "chat" && !chatReady ? null : (narratives[narrativeKey(mode === "chat" ? chatScope : uploadScope, s.result)] ?? "Updating the explanation for the latest version of this booking…")}
         onConfirmHazard={(rowId) => onEdits([{ path: "item.hazardConfirmedAt", rowId, value: stamp() }], "declaration")}

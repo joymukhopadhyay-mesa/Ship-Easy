@@ -3,7 +3,7 @@ import { Modal } from "./ui";
 
 export interface SentRecord {
   at: string;
-  route: "chat" | "explain" | "hazard";
+  route: "chat" | "explain" | "hazard" | "hs";
   model: string | null;
   payload: string;
   outcome: string;
@@ -37,6 +37,7 @@ export function PrivacyPanel({ open, onClose, sent, localOnly }: { open: boolean
   return (
     <Modal open={open} onClose={onClose} title="Privacy and what was sent">
       <p data-testid="privacy-statement" className="text-sm">{PRIVACY_STATEMENT}</p>
+      <p className="mt-2 text-sm text-muted">When an HS code is missing, the item description goes to the AI for a suggestion, and only the suggested 6-digit code (never your descriptions or any booking data) is sent to the UK government's public Trade Tariff to confirm it exists. Suggestions are never applied until you've opened the tariff link and confirmed.</p>
       <p className="mt-2 text-sm text-muted">In chat, your message text is sent so the model can read the fields you mention; it never receives the booking itself. Local-only mode {localOnly ? "is ON: nothing is sent to any model." : "is OFF. Turn it on to send nothing at all."}</p>
       <h3 className="mt-4 text-sm font-semibold">Show what was sent</h3>
       {sent.length === 0 ? (

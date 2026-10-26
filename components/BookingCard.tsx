@@ -14,6 +14,7 @@ import type { Edit } from "@/lib/session";
 import type { BookingResult, Change, Env, Item, Repair, RuleResult, Weights } from "@/lib/types";
 import { BoxIcon, Btn, Card, CardHeader, CheckIcon, ConfidenceChip, SeverityChip } from "./ui";
 import { CarrierCards, ChangeCompare, LoadAndRoute, ShipmentHero } from "./ShipmentTop";
+import { HsSuggestBlock, type HsUi } from "./HsSuggest";
 import { CarrierGantt, HealthMatrix, Legend, ruleName, ruleTone, TONE } from "./visuals";
 
 export interface CardProps {
@@ -29,6 +30,7 @@ export interface CardProps {
   narrative?: string | null;
   emptyHint?: string;
   showAddPallet?: boolean;
+  hs?: HsUi;
   mode?: "chat" | "file";
 }
 
@@ -88,7 +90,7 @@ function RepairBlock({ r, onApply }: { r: Repair; onApply: (cs: Change[]) => voi
   );
 }
 
-function Finding({ rule, res, env, onApply, onAction, onConfirmHazard }: { rule: RuleResult; res: BookingResult; env: Env; onApply: (cs: Change[]) => void; onAction: (a: SellerAction) => void; onConfirmHazard: (rowId: string) => void }) {
+function Finding({ rule, res, env, onApply, onAction, onConfirmHazard, hs }: { rule: RuleResult; res: BookingResult; env: Env; onApply: (cs: Change[]) => void; onAction: (a: SellerAction) => void; onConfirmHazard: (rowId: string) => void; hs?: HsUi }) {
   const repairs = res.repairs.filter((r) => r.rules.includes(rule.id));
   const actions = sellerActions(res.booking, res.rules, buildContext(res.booking, env)).filter((a) => a.rules.includes(rule.id));
   const pendingHazards = rule.id === "R-06" && rule.state === "implied" ? res.booking.items.filter((i) => (rule.itemRowIds ?? []).includes(i.rowId) && !i.hazardConfirmedAt) : [];
@@ -105,6 +107,7 @@ function Finding({ rule, res, env, onApply, onAction, onConfirmHazard }: { rule:
       {rule.numbers && rule.numbers.length > 0 && <ul className="mt-1 space-y-0.5">{rule.numbers.map((n, k) => <li key={k} className="font-mono text-[11px] text-zinc-600">{n}</li>)}</ul>}
       {rule.status === "fail" && <p className="mt-1 text-[11px] text-muted">Why it matters: {whyItMatters(rule.id)}</p>}
       {repairs.map((r, k) => <RepairBlock key={k} r={r} onApply={onApply} />)}
+      {rule.id === "R-01" && rule.status === "fail" && hs && res.booking.items.filter((i) => (rule.itemRowIds ?? []).includes(i.rowId)).map((i) => <HsSuggestBlock key={i.rowId} item={i} hs={hs} />)}
       {repairs.length === 0 && rule.status !== "pass" && <p className="mt-1.5 text-xs text-ink"><b>Fix:</b> {fixText(rule, res)}</p>}
       {(actions.length > 0 || pendingHazards.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-2">
@@ -273,7 +276,7 @@ export function BookingCard(p: CardProps) {
           </ul>
         )}
         {findings.length ? (
-          <ul className="mt-2">{findings.map((r) => <Finding key={r.id} rule={r} res={res} env={env} onApply={apply} onAction={act} onConfirmHazard={p.onConfirmHazard} />)}</ul>
+          <ul className="mt-2">{findings.map((r) => <Finding key={r.id} rule={r} res={res} env={env} onApply={apply} onAction={act} onConfirmHazard={p.onConfirmHazard} hs={p.hs} />)}</ul>
         ) : (
           <p className="px-5 py-4 text-sm font-medium text-ok">No findings: every check passes.</p>
         )}
