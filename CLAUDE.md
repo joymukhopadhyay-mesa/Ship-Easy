@@ -33,3 +33,11 @@ Read `docs/SPEC.pdf` (the spec) and `docs/template.xlsx` from the repo, never fr
   decide which side is wrong against the spec and log the reasoning in BUILD_LOG.md.
 - Secrets: only in `.env.local` (git-ignored). Never print, log or commit them; never expose them to client code.
 - Deps are minimal (Next 14, TS, Tailwind, SheetJS, Zod, Vitest). Ask before adding anything else.
+
+## Where things stand (read this first in a new session)
+- Live app: https://ship-easy-app.vercel.app (Vercel project `ship-easy`, team `joy-mesa-xp`, linked to GitHub `joymukhopadhyay-mesa/Ship-Easy`; every push to `main` redeploys).
+- Done: phases 0A-6 of the build, UI redesign from `docs/ui-reference`, chat guardrails, and three rounds of teammate bug fixes. Details and reasoning for every decision are in `BUILD_LOG.md`.
+- Commands: `npm install`, `npm run dev`, `npm test` (205 tests, must be green before any commit), `npm run oracle`, `node scripts/live-model-check.mjs`.
+- `.env.local` (git-ignored) must contain `OPENROUTER_API_KEY`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`; see `.env.example`. The same vars are set on Vercel.
+- Gotchas: write regexes with the Edit/Write tools, never through shell heredocs (backslashes get stripped). The Stage 1 deadline is not in the case files; the link must stay live until Wed 28 Oct 2026 EOD IST.
+- Submission still to do by the team: 1-minute video, 8-slide deck, the form.
